@@ -11,3 +11,18 @@ jinja2
 beautifulsoup4
 lxml
 flask
+# research-grade stack
+chromadb
+sentence-transformers
+langchain
+langchain-community
+langchain-core
+langchain-huggingface
+langchain-openai
+wandb
+scipy
+scikit-learn
+datasets
+accelerate
+evaluate
+tritonclient[http]

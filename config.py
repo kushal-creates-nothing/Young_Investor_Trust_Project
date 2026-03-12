@@ -7,6 +7,8 @@ load_dotenv()
 NEWS_API_KEY = os.getenv("NEWS_API_KEY", "")
 GNEWS_API_KEY = os.getenv("GNEWS_API_KEY", "")
 FINNHUB_API_KEY = os.getenv("FINNHUB_API_KEY", "")
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
+HUGGINGFACE_API_KEY = os.getenv("HUGGINGFACE_API_KEY", "")
 
 FETCH_INTERVAL_HOURS = int(os.getenv("FETCH_INTERVAL_HOURS", "2"))
 DB_PATH = os.getenv("DB_PATH", "data/sentiment_data.db")
@@ -66,3 +68,23 @@ SAFE_HAVEN_ASSETS = ["gold", "bonds", "treasury", "cash", "yen", "swiss franc", 
 # tipping point thresholds — tuned by observation, adjust if needed
 SHPI_TIPPING_THRESHOLD = 0.4
 SENTIMENT_TIPPING_THRESHOLD = -0.2
+
+# ── research-grade stack ───────────────────────────────────────────────────────
+
+# RAG / Vector DB
+CHROMA_PERSIST_DIR = os.getenv("CHROMA_PERSIST_DIR", "data/chroma")
+EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL", "all-MiniLM-L6-v2")
+RAG_TOP_K = int(os.getenv("RAG_TOP_K", "5"))
+
+# MLOps
+WANDB_PROJECT = os.getenv("WANDB_PROJECT", "young-investor-trust")
+WANDB_ENTITY = os.getenv("WANDB_ENTITY", "")
+MODEL_REGISTRY_PATH = os.getenv("MODEL_REGISTRY_PATH", "data/model_registry.json")
+
+# Triton Inference Server
+TRITON_URL = os.getenv("TRITON_URL", "localhost:8000")
+TRITON_MODEL_NAME = os.getenv("TRITON_MODEL_NAME", "finbert")
+USE_TRITON = os.getenv("USE_TRITON", "false").lower() == "true"
+
+# Fine-tuned model path (used by analyzer when available)
+FINETUNED_MODEL_PATH = os.getenv("FINETUNED_MODEL_PATH", "models/finbert-finetuned")
