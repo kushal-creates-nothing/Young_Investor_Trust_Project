@@ -128,7 +128,9 @@ class TestModelRegistry(unittest.TestCase):
     def setUp(self):
         import tempfile
         import os
-        self.tmp = tempfile.mktemp(suffix=".json")
+        fd, self.tmp = tempfile.mkstemp(suffix=".json")
+        os.close(fd)
+        os.remove(self.tmp)  # registry creates the file itself; just need the path
         from mlops.model_registry import ModelRegistry
         self.registry = ModelRegistry(registry_path=self.tmp)
 

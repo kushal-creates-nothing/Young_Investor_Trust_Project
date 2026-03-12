@@ -355,5 +355,9 @@ with app.app_context():
 if __name__ == "__main__":
     port = int(os.getenv("PORT", 5000))
     debug = os.getenv("FLASK_DEBUG", "false").lower() == "true"
+    # host="0.0.0.0" binds all interfaces — required for container/cloud deployments.
+    # Never enable FLASK_DEBUG=true in production; use a proper WSGI server (gunicorn) instead.
+    if debug:
+        logger.warning("Debug mode is ON — do not run with FLASK_DEBUG=true in production")
     app.run(host="0.0.0.0", port=port, debug=debug)
 
