@@ -1,0 +1,12 @@
+requests
+feedparser
+vaderSentiment
+transformers
+torch
+schedule
+python-dotenv
+sqlalchemy
+pandas
+jinja2
+beautifulsoup4
+lxml
