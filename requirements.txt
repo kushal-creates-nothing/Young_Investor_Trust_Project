@@ -10,3 +10,4 @@ pandas
 jinja2
 beautifulsoup4
 lxml
+flask

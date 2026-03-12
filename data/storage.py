@@ -1,26 +1,11 @@
-"""
-data/storage.py — SQLite persistence layer using SQLAlchemy.
-
-Tables:
-  - articles         : raw article metadata
-  - sentiment_results: per-article sentiment scores
-  - mood_snapshots   : aggregated market mood per run
-"""
-
 import json
 import logging
+import os
 from datetime import datetime
 
 from sqlalchemy import (
-    Boolean,
-    Column,
-    DateTime,
-    Float,
-    ForeignKey,
-    Integer,
-    String,
-    Text,
-    create_engine,
+    Boolean, Column, DateTime, Float, ForeignKey,
+    Integer, String, Text, create_engine,
 )
 from sqlalchemy.orm import DeclarativeBase, Session, relationship
 
@@ -56,7 +41,7 @@ class SentimentResultModel(Base):
     vader_label = Column(String(16))
     finbert_label = Column(String(16))
     finbert_score = Column(Float)
-    keywords_matched = Column(Text)   # JSON-encoded list
+    keywords_matched = Column(Text)
     is_safe_haven_signal = Column(Boolean, default=False)
     is_risk_on_signal = Column(Boolean, default=False)
     created_at = Column(DateTime, default=datetime.utcnow)
@@ -79,95 +64,78 @@ class MoodSnapshotModel(Base):
 
 
 class DataStorage:
-    """Manages all database read/write operations."""
 
-    def __init__(self, db_path: str = None):
+    def __init__(self, db_path=None):
         db_path = db_path or config.DB_PATH
-        # Ensure the parent directory exists
-        import os
-        os.makedirs(os.path.dirname(db_path) if os.path.dirname(db_path) else ".", exist_ok=True)
+        parent = os.path.dirname(db_path)
+        if parent:
+            os.makedirs(parent, exist_ok=True)
         self.engine = create_engine(f"sqlite:///{db_path}", echo=False)
         Base.metadata.create_all(self.engine)
-        logger.info("DataStorage initialised at '%s'.", db_path)
+        logger.info("DB ready at '%s'", db_path)
 
-    # ── Articles ───────────────────────────────────────────────────────────────
-
-    def save_articles(self, articles) -> dict:
-        """Upsert articles by URL. Returns mapping url -> article_id."""
-        url_to_id: dict = {}
+    def save_articles(self, articles):
+        url_to_id = {}
         with Session(self.engine) as session:
-            for article in articles:
-                if not article.url:
+            for art in articles:
+                if not art.url:
                     continue
-                existing = session.query(ArticleModel).filter_by(url=article.url).first()
+                existing = session.query(ArticleModel).filter_by(url=art.url).first()
                 if existing:
-                    url_to_id[article.url] = existing.id
+                    url_to_id[art.url] = existing.id
                 else:
-                    new_article = ArticleModel(
-                        title=article.title,
-                        description=article.description,
-                        url=article.url,
-                        source=article.source,
-                        published_at=article.published_at,
+                    row = ArticleModel(
+                        title=art.title,
+                        description=art.description,
+                        url=art.url,
+                        source=art.source,
+                        published_at=art.published_at,
                     )
-                    session.add(new_article)
+                    session.add(row)
                     session.flush()
-                    url_to_id[article.url] = new_article.id
+                    url_to_id[art.url] = row.id
             session.commit()
         return url_to_id
 
-    # ── Sentiment Results ──────────────────────────────────────────────────────
-
-    def save_sentiment_results(self, results, url_to_id: dict = None):
-        """Persist sentiment results. url_to_id maps article URL to DB article id."""
+    def save_sentiment_results(self, results, url_to_id=None):
         with Session(self.engine) as session:
-            for result in results:
-                article_id = None
-                if url_to_id:
-                    article_id = url_to_id.get(result.article.url)
+            for r in results:
+                article_id = url_to_id.get(r.article.url) if url_to_id else None
                 if article_id is None:
-                    # Fallback: look up by URL
-                    row = session.query(ArticleModel).filter_by(url=result.article.url).first()
+                    row = session.query(ArticleModel).filter_by(url=r.article.url).first()
                     if row:
                         article_id = row.id
                 if article_id is None:
-                    logger.warning("No DB article found for URL '%s' — skipping sentiment.", result.article.url)
+                    logger.warning("No DB row for '%s' — skipping", r.article.url)
                     continue
-
-                sr = SentimentResultModel(
+                session.add(SentimentResultModel(
                     article_id=article_id,
-                    vader_compound=result.vader_compound,
-                    vader_label=result.vader_label,
-                    finbert_label=result.finbert_label,
-                    finbert_score=result.finbert_score,
-                    keywords_matched=json.dumps(result.keywords_matched),
-                    is_safe_haven_signal=result.is_safe_haven_signal,
-                    is_risk_on_signal=result.is_risk_on_signal,
-                )
-                session.add(sr)
+                    vader_compound=r.vader_compound,
+                    vader_label=r.vader_label,
+                    finbert_label=r.finbert_label,
+                    finbert_score=r.finbert_score,
+                    keywords_matched=json.dumps(r.keywords_matched),
+                    is_safe_haven_signal=r.is_safe_haven_signal,
+                    is_risk_on_signal=r.is_risk_on_signal,
+                ))
             session.commit()
 
-    # ── Mood Snapshots ─────────────────────────────────────────────────────────
-
-    def save_mood_snapshot(self, mood_dict: dict):
-        """Persist a mood snapshot."""
+    def save_mood_snapshot(self, mood):
         with Session(self.engine) as session:
-            snapshot = MoodSnapshotModel(
+            session.add(MoodSnapshotModel(
                 snapshot_time=datetime.utcnow(),
-                overall_score=mood_dict.get("overall_score"),
-                shpi=mood_dict.get("shpi"),
-                risk_on_index=mood_dict.get("risk_on_index"),
-                fear_score=mood_dict.get("fear_score"),
-                mood_label=mood_dict.get("mood_label"),
-                tipping_point_alert=mood_dict.get("tipping_point_alert", ""),
-                article_count=mood_dict.get("article_count", 0),
-            )
-            session.add(snapshot)
+                overall_score=mood.get("overall_score"),
+                shpi=mood.get("shpi"),
+                risk_on_index=mood.get("risk_on_index"),
+                fear_score=mood.get("fear_score"),
+                mood_label=mood.get("mood_label"),
+                tipping_point_alert=mood.get("tipping_point_alert", ""),
+                article_count=mood.get("article_count", 0),
+            ))
             session.commit()
-        logger.info("Mood snapshot saved: %s", mood_dict.get("mood_label"))
+        logger.info("Snapshot saved: %s", mood.get("mood_label"))
 
-    def get_last_n_snapshots(self, n: int = 24) -> list:
-        """Return the last n mood snapshots as dicts, ordered newest-first."""
+    def get_last_n_snapshots(self, n=24):
         with Session(self.engine) as session:
             rows = (
                 session.query(MoodSnapshotModel)

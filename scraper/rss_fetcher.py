@@ -1,9 +1,3 @@
-"""
-scraper/rss_fetcher.py — Fallback RSS scraper using feedparser.
-
-Parses RSS feeds from Reuters, BBC Business, CNBC, and MarketWatch.
-"""
-
 import logging
 from typing import List
 
@@ -16,40 +10,35 @@ logger = logging.getLogger(__name__)
 
 
 class RSSFetcher:
-    """Fetches articles from configured RSS feeds."""
 
-    def __init__(self, feeds: dict = None):
+    def __init__(self, feeds=None):
         self.feeds = feeds if feeds is not None else config.RSS_FEEDS
 
-    def fetch_feed(self, name: str, url: str) -> List[Article]:
-        """Parse a single RSS feed and return Article objects."""
+    def fetch_feed(self, name, url):
         try:
             feed = feedparser.parse(url)
             articles = []
             for entry in feed.entries:
                 title = entry.get("title", "")
-                description = entry.get("summary", "") or entry.get("description", "")
+                desc = entry.get("summary", "") or entry.get("description", "")
                 link = entry.get("link", "")
-                published = entry.get("published", "") or entry.get("updated", "")
-                articles.append(
-                    Article(
-                        title=title,
-                        description=description,
-                        url=link,
-                        source=name,
-                        published_at=published,
-                        raw_text=f"{title} {description}",
-                    )
-                )
-            logger.info("RSS feed '%s' returned %d articles.", name, len(articles))
+                pub = entry.get("published", "") or entry.get("updated", "")
+                articles.append(Article(
+                    title=title,
+                    description=desc,
+                    url=link,
+                    source=name,
+                    published_at=pub,
+                    raw_text=f"{title} {desc}",
+                ))
+            logger.info("RSS '%s': %d articles", name, len(articles))
             return articles
-        except Exception as exc:
-            logger.error("Failed to fetch RSS feed '%s' (%s): %s", name, url, exc)
+        except Exception as e:
+            logger.error("RSS feed '%s' failed: %s", name, e)
             return []
 
-    def fetch_all_rss(self) -> List[Article]:
-        """Fetch all configured RSS feeds and return a deduplicated list of Articles."""
-        all_articles: List[Article] = []
+    def fetch_all_rss(self):
+        combined = []
         for name, url in self.feeds.items():
-            all_articles.extend(self.fetch_feed(name, url))
-        return _deduplicate(all_articles)
+            combined.extend(self.fetch_feed(name, url))
+        return _deduplicate(combined)

@@ -1,9 +1,3 @@
-"""
-sentiment/scoring.py — Aggregate scoring and Safe-Haven Pressure Index.
-
-Converts a list of SentimentResult objects into a market mood snapshot dict.
-"""
-
 import logging
 from typing import List
 
@@ -12,144 +6,101 @@ from sentiment.analyzer import SentimentResult
 
 logger = logging.getLogger(__name__)
 
-# Mood label thresholds (based on overall VADER compound)
-_MOOD_THRESHOLDS = [
+# compound score → mood label mapping, evaluated top-to-bottom
+_THRESHOLDS = [
     (0.35, "Strongly Bullish"),
     (0.15, "Bullish"),
     (-0.15, "Neutral"),
     (-0.35, "Bearish"),
 ]
 
-NOTABLE_FIGURES_LOWER = [f.lower() for f in config.NOTABLE_FIGURES]
-
 
 class MarketMoodScorer:
-    """Computes market mood metrics from a list of SentimentResult objects."""
 
     def compute_mood_score(self, results: List[SentimentResult]) -> dict:
-        """
-        Compute aggregate mood metrics.
-
-        Returns a dict with keys:
-            overall_score, shpi, risk_on_index, fear_score,
-            mood_label, tipping_point_alert, article_count,
-            safe_haven_count, risk_on_count, negative_count, positive_count,
-            notable_figures
-        """
         total = len(results)
         if total == 0:
-            return self._empty_snapshot()
+            return self._empty()
 
-        safe_haven_count = sum(1 for r in results if r.is_safe_haven_signal)
-        risk_on_count = sum(1 for r in results if r.is_risk_on_signal)
-        negative_count = sum(1 for r in results if r.vader_label == "negative")
-        positive_count = sum(1 for r in results if r.vader_label == "positive")
+        sh_count = sum(1 for r in results if r.is_safe_haven_signal)
+        ro_count = sum(1 for r in results if r.is_risk_on_signal)
+        neg_count = sum(1 for r in results if r.vader_label == "negative")
+        pos_count = sum(1 for r in results if r.vader_label == "positive")
 
-        # Overall sentiment: weighted average of VADER compound scores
-        overall_score = sum(r.vader_compound for r in results) / total
+        overall = sum(r.vader_compound for r in results) / total
+        shpi = sh_count / total
+        risk_on_idx = ro_count / total
 
-        # Safe-Haven Pressure Index: ratio of safe-haven articles
-        shpi = safe_haven_count / total
+        # fear = blend of negative articles and safe-haven mentions, capped at 1
+        fear = min((neg_count + sh_count) / (total * 2), 1.0)
 
-        # Risk-On Index: ratio of risk-on articles
-        risk_on_index = risk_on_count / total
-
-        # Fear vs Greed score: higher = more fear
-        fear_score = (negative_count + safe_haven_count) / (total * 2) if total > 0 else 0.0
-        fear_score = min(fear_score, 1.0)
-
-        # Mood label
-        mood_label = self._compute_mood_label(overall_score, shpi)
-
-        # Tipping point alert
-        tipping_point_alert = self._check_tipping_point(shpi, overall_score)
-
-        # Notable figures analysis
-        notable_figures = self._analyse_notable_figures(results)
+        mood_label = self._mood_label(overall, shpi)
+        alert = self._tipping_point(shpi, overall)
+        figures = self._notable_figures(results)
 
         return {
-            "overall_score": round(overall_score, 4),
+            "overall_score": round(overall, 4),
             "shpi": round(shpi, 4),
-            "risk_on_index": round(risk_on_index, 4),
-            "fear_score": round(fear_score, 4),
+            "risk_on_index": round(risk_on_idx, 4),
+            "fear_score": round(fear, 4),
             "mood_label": mood_label,
-            "tipping_point_alert": tipping_point_alert,
+            "tipping_point_alert": alert,
             "article_count": total,
-            "safe_haven_count": safe_haven_count,
-            "risk_on_count": risk_on_count,
-            "negative_count": negative_count,
-            "positive_count": positive_count,
-            "notable_figures": notable_figures,
+            "safe_haven_count": sh_count,
+            "risk_on_count": ro_count,
+            "negative_count": neg_count,
+            "positive_count": pos_count,
+            "notable_figures": figures,
         }
 
-    # ── Helpers ────────────────────────────────────────────────────────────────
-
-    def _compute_mood_label(self, overall_score: float, shpi: float) -> str:
-        """Map overall sentiment + SHPI to a mood label."""
-        # Special case: even if overall sentiment is slightly positive, a very
-        # high SHPI indicates flight-to-safety behaviour
-        if shpi >= config.SHPI_TIPPING_THRESHOLD and overall_score < config.SENTIMENT_TIPPING_THRESHOLD:
+    def _mood_label(self, overall, shpi):
+        if shpi >= config.SHPI_TIPPING_THRESHOLD and overall < config.SENTIMENT_TIPPING_THRESHOLD:
             return "Safe-Haven Flight"
-
-        for threshold, label in _MOOD_THRESHOLDS:
-            if overall_score >= threshold:
+        for threshold, label in _THRESHOLDS:
+            if overall >= threshold:
                 return label
-
         return "Strongly Bearish"
 
-    def _check_tipping_point(self, shpi: float, overall_score: float) -> str:
-        """Return tipping-point alert string if threshold exceeded."""
-        if shpi > config.SHPI_TIPPING_THRESHOLD and overall_score < config.SENTIMENT_TIPPING_THRESHOLD:
+    def _tipping_point(self, shpi, overall):
+        if shpi > config.SHPI_TIPPING_THRESHOLD and overall < config.SENTIMENT_TIPPING_THRESHOLD:
             return "⚠️ CAUTION: Market sentiment shifting toward safe havens"
-        if shpi > config.SHPI_TIPPING_THRESHOLD * 0.75 and overall_score < 0.0:
+        if shpi > config.SHPI_TIPPING_THRESHOLD * 0.75 and overall < 0.0:
             return "⚠️ TIPPING POINT APPROACHING — monitor closely"
         return ""
 
-    def _analyse_notable_figures(self, results: List[SentimentResult]) -> List[dict]:
-        """Detect notable figures in articles and summarise their sentiment context."""
-        figure_data: dict = {}
-        for result in results:
-            text_lower = result.article.raw_text.lower()
-            for figure in config.NOTABLE_FIGURES:
-                if figure.lower() in text_lower:
-                    if figure not in figure_data:
-                        figure_data[figure] = {"count": 0, "compounds": []}
-                    figure_data[figure]["count"] += 1
-                    figure_data[figure]["compounds"].append(result.vader_compound)
+    def _notable_figures(self, results):
+        data = {}
+        for r in results:
+            text = r.article.raw_text.lower()
+            for fig in config.NOTABLE_FIGURES:
+                if fig.lower() in text:
+                    if fig not in data:
+                        data[fig] = {"count": 0, "scores": []}
+                    data[fig]["count"] += 1
+                    data[fig]["scores"].append(r.vader_compound)
 
-        output = []
-        for figure, data in figure_data.items():
-            compounds = data["compounds"]
-            avg = sum(compounds) / len(compounds)
+        out = []
+        for fig, d in data.items():
+            avg = sum(d["scores"]) / len(d["scores"])
             if avg >= 0.05:
-                sentiment = "positive"
+                sent = "positive"
             elif avg <= -0.05:
-                sentiment = "negative"
+                sent = "negative"
             else:
-                sentiment = "neutral"
-            output.append(
-                {
-                    "name": figure,
-                    "article_count": data["count"],
-                    "avg_sentiment": round(avg, 3),
-                    "sentiment_label": sentiment,
-                }
-            )
-        return output
+                sent = "neutral"
+            out.append({
+                "name": fig,
+                "article_count": d["count"],
+                "avg_sentiment": round(avg, 3),
+                "sentiment_label": sent,
+            })
+        return out
 
     @staticmethod
-    def _empty_snapshot() -> dict:
+    def _empty():
         return {
-            "overall_score": 0.0,
-            "shpi": 0.0,
-            "risk_on_index": 0.0,
-            "fear_score": 0.0,
-            "mood_label": "Neutral",
-            "tipping_point_alert": "",
-            "article_count": 0,
-            "safe_haven_count": 0,
-            "risk_on_count": 0,
-            "negative_count": 0,
-            "positive_count": 0,
-            "notable_figures": [],
+            "overall_score": 0.0, "shpi": 0.0, "risk_on_index": 0.0,
+            "fear_score": 0.0, "mood_label": "Neutral", "tipping_point_alert": "",
+            "article_count": 0, "safe_haven_count": 0, "risk_on_count": 0,
+            "negative_count": 0, "positive_count": 0, "notable_figures": [],
         }
