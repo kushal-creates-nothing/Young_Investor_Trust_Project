@@ -1,6 +1,6 @@
 import logging
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import List
 
 import requests
@@ -98,7 +98,7 @@ class NewsFetcher:
             out = []
             for item in data:
                 ts = item.get("datetime", 0)
-                pub = datetime.utcfromtimestamp(ts).isoformat() if ts else ""
+                pub = datetime.fromtimestamp(ts, tz=timezone.utc).isoformat() if ts else ""
                 headline = item.get("headline") or ""
                 summary = item.get("summary") or ""
                 out.append(Article(

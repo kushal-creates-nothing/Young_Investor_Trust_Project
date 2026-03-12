@@ -7,10 +7,10 @@ from datetime import datetime
 from flask import Flask, jsonify, render_template, request
 
 import config
-from data.storage import DataStorage
-from scraper.news_fetcher import NewsFetcher, _deduplicate
+from data.storage import DataStorage, SentimentResultModel, ArticleModel
+from scraper.news_fetcher import NewsFetcher, _deduplicate, Article
 from scraper.rss_fetcher import RSSFetcher
-from sentiment.analyzer import SentimentAnalyzer
+from sentiment.analyzer import SentimentAnalyzer, SentimentResult
 from sentiment.scoring import MarketMoodScorer
 from dashboard.report import ReportGenerator
 
@@ -23,11 +23,51 @@ logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
 
-# track whether a run is in progress so we don't double-trigger
 _run_lock = threading.Lock()
 _pipeline_running = False
 _last_run_time = None
-_cached_results = []  # keep latest results in memory for quick API responses
+_cached_results = []
+
+
+def _load_cached_results_from_db():
+    """On startup, warm the in-memory headline cache from the latest DB entries."""
+    global _cached_results
+    try:
+        from sqlalchemy.orm import Session
+        storage = DataStorage()
+        with Session(storage.engine) as session:
+            # get the 50 most recent sentiment results with their articles
+            rows = (
+                session.query(SentimentResultModel)
+                .join(ArticleModel)
+                .order_by(SentimentResultModel.created_at.desc())
+                .limit(50)
+                .all()
+            )
+            rebuilt = []
+            for row in rows:
+                art = Article(
+                    title=row.article.title or "",
+                    description=row.article.description or "",
+                    url=row.article.url or "",
+                    source=row.article.source or "",
+                    published_at=row.article.published_at or "",
+                    raw_text=f"{row.article.title} {row.article.description}",
+                )
+                rebuilt.append(SentimentResult(
+                    article=art,
+                    vader_compound=row.vader_compound or 0.0,
+                    vader_label=row.vader_label or "neutral",
+                    finbert_label=row.finbert_label or "neutral",
+                    finbert_score=row.finbert_score or 0.0,
+                    keywords_matched=json.loads(row.keywords_matched) if row.keywords_matched else [],
+                    is_safe_haven_signal=bool(row.is_safe_haven_signal),
+                    is_risk_on_signal=bool(row.is_risk_on_signal),
+                ))
+            _cached_results = rebuilt
+            logger.info("Warmed headline cache with %d results from DB", len(rebuilt))
+    except Exception as e:
+        logger.warning("Could not warm cache from DB: %s", e)
 
 
 def _run_pipeline():
@@ -87,10 +127,16 @@ def api_latest():
         if not snaps:
             return jsonify({"error": "No data yet — run the pipeline first"}), 404
         snap = snaps[0]
-        # attach top headlines from memory cache if available
         headlines = _build_headlines(_cached_results)
         snap["headlines"] = headlines
         snap["last_run_time"] = _last_run_time
+        # include notable figures from the scorer if we have cached results
+        if _cached_results:
+            scorer = MarketMoodScorer()
+            mood = scorer.compute_mood_score(_cached_results)
+            snap["notable_figures"] = mood.get("notable_figures", [])
+            snap["positive_count"] = mood.get("positive_count", 0)
+            snap["negative_count"] = mood.get("negative_count", 0)
         return jsonify(snap)
     except Exception as e:
         logger.exception("Error in /api/latest")
@@ -103,7 +149,6 @@ def api_history():
     try:
         storage = DataStorage()
         snaps = storage.get_last_n_snapshots(n)
-        # reverse so oldest first for charting
         snaps.reverse()
         return jsonify(snaps)
     except Exception as e:
@@ -126,7 +171,6 @@ def api_run():
             return jsonify({"status": "already_running", "message": "Analysis already in progress"}), 409
         _pipeline_running = True
 
-    # run in background thread so the response returns immediately
     t = threading.Thread(target=_run_pipeline, daemon=True)
     t.start()
     return jsonify({"status": "started", "message": "Analysis started — check back in ~30 seconds"})
@@ -163,6 +207,11 @@ def _build_headlines(results, n=7):
         "positive": [fmt(r) for r in sorted_pos],
         "safe_haven": [fmt(r) for r in safe],
     }
+
+
+# warm the cache before the first request
+with app.app_context():
+    _load_cached_results_from_db()
 
 
 if __name__ == "__main__":
