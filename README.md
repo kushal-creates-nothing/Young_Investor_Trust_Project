@@ -49,6 +49,12 @@ Young_Investor_Trust_Project/
 
 ---
 
+## Deployment
+
+For step-by-step instructions on how to deploy both the **static GitHub Pages demo** and the **live Flask app** to the cloud, see **[DEPLOYMENT.md](DEPLOYMENT.md)**.
+
+---
+
 ## Quick start
 
 ### 1. Install dependencies
