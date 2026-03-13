@@ -1,0 +1,606 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Young Investor Trust — Market Mood Dashboard</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet" />
+  <style>
+    * { font-family: 'Inter', sans-serif; }
+    .gradient-bg {
+      background: linear-gradient(135deg, #0f172a 0%, #1e1b4b 50%, #0f172a 100%);
+    }
+    .card {
+      background: rgba(255,255,255,0.05);
+      backdrop-filter: blur(10px);
+      border: 1px solid rgba(255,255,255,0.1);
+    }
+    .card-light {
+      background: rgba(255,255,255,0.08);
+      border: 1px solid rgba(255,255,255,0.15);
+    }
+    .glow-green { box-shadow: 0 0 20px rgba(34,197,94,0.3); }
+    .glow-red   { box-shadow: 0 0 20px rgba(239,68,68,0.3); }
+    .glow-yellow{ box-shadow: 0 0 20px rgba(234,179,8,0.3); }
+    .glow-blue  { box-shadow: 0 0 20px rgba(99,102,241,0.3); }
+
+    .gauge-wrap { position: relative; display: inline-flex; align-items: center; justify-content: center; }
+    .gauge-text { position: absolute; text-align: center; }
+
+    .pill { display: inline-block; padding: 2px 10px; border-radius: 9999px; font-size: 0.72rem; font-weight: 600; }
+    .pill-neg  { background: rgba(239,68,68,0.2); color: #f87171; }
+    .pill-pos  { background: rgba(34,197,94,0.2); color: #4ade80; }
+    .pill-neu  { background: rgba(148,163,184,0.2); color: #94a3b8; }
+
+    .shimmer {
+      background: linear-gradient(90deg, rgba(255,255,255,0.03) 25%, rgba(255,255,255,0.08) 50%, rgba(255,255,255,0.03) 75%);
+      background-size: 200% 100%;
+      animation: shimmer 1.5s infinite;
+    }
+    @keyframes shimmer { 0%{background-position:200% 0} 100%{background-position:-200% 0} }
+
+    .pulse-dot {
+      display: inline-block; width: 8px; height: 8px; border-radius: 50%;
+      background: #4ade80;
+      animation: pulse-anim 2s infinite;
+    }
+    @keyframes pulse-anim {
+      0%,100% { opacity: 1; transform: scale(1); }
+      50%      { opacity: 0.4; transform: scale(1.4); }
+    }
+
+    .headline-card:hover { background: rgba(255,255,255,0.1); transform: translateX(4px); }
+    .headline-card { transition: all 0.2s ease; }
+
+    .tab-btn { transition: all 0.2s ease; }
+    .tab-btn.active {
+      background: rgba(99,102,241,0.3);
+      border-color: #6366f1;
+      color: #a5b4fc;
+    }
+
+    ::-webkit-scrollbar { width: 4px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.2); border-radius: 2px; }
+
+    .alert-banner {
+      background: linear-gradient(90deg, rgba(251,146,60,0.15), rgba(239,68,68,0.15));
+      border-left: 3px solid #f97316;
+      animation: alertPulse 3s ease-in-out infinite;
+    }
+    @keyframes alertPulse {
+      0%,100% { border-left-color: #f97316; }
+      50%      { border-left-color: #ef4444; }
+    }
+  </style>
+</head>
+<body class="gradient-bg min-h-screen text-white">
+
+  <!-- Top nav -->
+  <nav class="card border-b border-white/10 px-6 py-4 flex items-center justify-between sticky top-0 z-50">
+    <div class="flex items-center gap-3">
+      <div class="w-8 h-8 rounded-lg bg-indigo-500 flex items-center justify-center text-lg">📊</div>
+      <div>
+        <h1 class="text-sm font-700 text-white">Young Investor Trust</h1>
+        <p class="text-xs text-slate-400">Market Mood Dashboard</p>
+      </div>
+    </div>
+    <div class="flex items-center gap-4">
+      <div id="lastUpdated" class="text-xs text-slate-400 hidden md:block">Loading...</div>
+      <div class="flex items-center gap-2">
+        <span class="pulse-dot" id="liveDot"></span>
+        <span class="text-xs text-slate-400" id="liveStatus">Live</span>
+      </div>
+      <button id="runBtn"
+        class="bg-indigo-600 hover:bg-indigo-500 active:scale-95 transition-all text-white text-xs font-600 px-4 py-2 rounded-lg flex items-center gap-2"
+        onclick="triggerRun()">
+        <span id="runBtnIcon">⚡</span>
+        <span id="runBtnText">Run Now</span>
+      </button>
+    </div>
+  </nav>
+
+  <!-- Alert banner (hidden by default) -->
+  <div id="alertBanner" class="hidden alert-banner mx-4 mt-4 px-5 py-3 rounded-xl text-sm font-500 text-orange-200"></div>
+
+  <!-- Main content -->
+  <main class="max-w-7xl mx-auto px-4 py-6 space-y-6">
+
+    <!-- Hero: Mood Score + Gauge -->
+    <section class="grid grid-cols-1 lg:grid-cols-3 gap-4">
+
+      <!-- Big mood card -->
+      <div id="moodCard" class="card rounded-2xl p-6 lg:col-span-1 flex flex-col items-center justify-center text-center glow-blue min-h-[240px]">
+        <p class="text-xs text-slate-400 uppercase tracking-widest mb-2">Market Mood</p>
+        <div class="gauge-wrap my-2">
+          <canvas id="gaugeChart" width="180" height="100"></canvas>
+          <div class="gauge-text">
+            <p id="moodScore" class="text-3xl font-800 text-white">—</p>
+            <p class="text-xs text-slate-400">compound</p>
+          </div>
+        </div>
+        <p id="moodLabel" class="text-xl font-700 mt-1 text-indigo-300">Loading…</p>
+        <p id="articleCount" class="text-xs text-slate-500 mt-1">— articles analysed</p>
+      </div>
+
+      <!-- Metric cards -->
+      <div class="lg:col-span-2 grid grid-cols-2 sm:grid-cols-2 gap-4">
+
+        <!-- Safe-Haven Pressure -->
+        <div id="shpiCard" class="card rounded-2xl p-5 flex flex-col justify-between">
+          <div class="flex items-center justify-between mb-3">
+            <p class="text-xs text-slate-400 uppercase tracking-widest">Safe-Haven Pressure</p>
+            <span class="text-2xl">🛡️</span>
+          </div>
+          <div>
+            <p id="shpiValue" class="text-3xl font-700 text-white">—</p>
+            <div class="w-full bg-white/10 rounded-full h-2 mt-2">
+              <div id="shpiBar" class="h-2 rounded-full transition-all duration-1000" style="width:0%"></div>
+            </div>
+            <p id="shpiLabel" class="text-xs text-slate-400 mt-1">—</p>
+          </div>
+        </div>
+
+        <!-- Risk-On Index -->
+        <div id="riskOnCard" class="card rounded-2xl p-5 flex flex-col justify-between">
+          <div class="flex items-center justify-between mb-3">
+            <p class="text-xs text-slate-400 uppercase tracking-widest">Risk-On Activity</p>
+            <span class="text-2xl">📈</span>
+          </div>
+          <div>
+            <p id="riskOnValue" class="text-3xl font-700 text-white">—</p>
+            <div class="w-full bg-white/10 rounded-full h-2 mt-2">
+              <div id="riskOnBar" class="h-2 rounded-full bg-emerald-500 transition-all duration-1000" style="width:0%"></div>
+            </div>
+            <p id="riskOnLabel" class="text-xs text-slate-400 mt-1">—</p>
+          </div>
+        </div>
+
+        <!-- Fear Score -->
+        <div class="card rounded-2xl p-5 flex flex-col justify-between">
+          <div class="flex items-center justify-between mb-3">
+            <p class="text-xs text-slate-400 uppercase tracking-widest">Fear Score</p>
+            <span class="text-2xl">😰</span>
+          </div>
+          <div>
+            <p id="fearValue" class="text-3xl font-700 text-white">—</p>
+            <div class="w-full bg-white/10 rounded-full h-2 mt-2">
+              <div id="fearBar" class="h-2 rounded-full transition-all duration-1000" style="width:0%"></div>
+            </div>
+            <p class="text-xs text-slate-400 mt-1">0 = no fear · 1 = max fear</p>
+          </div>
+        </div>
+
+        <!-- Article breakdown -->
+        <div class="card rounded-2xl p-5 flex flex-col justify-between">
+          <div class="flex items-center justify-between mb-3">
+            <p class="text-xs text-slate-400 uppercase tracking-widest">Sentiment Mix</p>
+            <span class="text-2xl">🗞️</span>
+          </div>
+          <div class="flex flex-col gap-1 text-sm">
+            <div class="flex justify-between">
+              <span class="text-emerald-400">Positive</span>
+              <span id="posCount" class="font-600">—</span>
+            </div>
+            <div class="flex justify-between">
+              <span class="text-red-400">Negative</span>
+              <span id="negCount" class="font-600">—</span>
+            </div>
+            <div class="flex justify-between">
+              <span class="text-slate-400">Neutral</span>
+              <span id="neuCount" class="font-600">—</span>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </section>
+
+    <!-- Historical trend chart -->
+    <section class="card rounded-2xl p-6">
+      <div class="flex items-center justify-between mb-4">
+        <div>
+          <h2 class="text-sm font-600 text-white">Sentiment Trend</h2>
+          <p class="text-xs text-slate-400">Last 24 analysis runs</p>
+        </div>
+        <div class="flex gap-3 text-xs text-slate-400">
+          <span class="flex items-center gap-1"><span class="w-3 h-1 bg-indigo-400 inline-block rounded"></span> Sentiment</span>
+          <span class="flex items-center gap-1"><span class="w-3 h-1 bg-orange-400 inline-block rounded"></span> SHPI</span>
+          <span class="flex items-center gap-1"><span class="w-3 h-1 bg-rose-400 inline-block rounded"></span> Fear</span>
+        </div>
+      </div>
+      <canvas id="trendChart" height="80"></canvas>
+    </section>
+
+    <!-- Headlines + Notable Figures -->
+    <section class="grid grid-cols-1 lg:grid-cols-3 gap-4">
+
+      <!-- Headlines panel -->
+      <div class="card rounded-2xl p-5 lg:col-span-2">
+        <div class="flex items-center justify-between mb-4">
+          <h2 class="text-sm font-600 text-white">Latest Headlines</h2>
+          <div class="flex gap-2">
+            <button class="tab-btn active text-xs px-3 py-1 rounded-lg border border-white/10 text-slate-300" onclick="switchTab('negative', this)">🔴 Bearish</button>
+            <button class="tab-btn text-xs px-3 py-1 rounded-lg border border-white/10 text-slate-300" onclick="switchTab('positive', this)">🟢 Bullish</button>
+            <button class="tab-btn text-xs px-3 py-1 rounded-lg border border-white/10 text-slate-300" onclick="switchTab('safe_haven', this)">🛡️ Safe Haven</button>
+          </div>
+        </div>
+        <div id="headlineList" class="space-y-2 max-h-72 overflow-y-auto pr-1">
+          <p class="text-slate-500 text-sm text-center py-8">Run analysis to see headlines</p>
+        </div>
+      </div>
+
+      <!-- Notable Figures -->
+      <div class="card rounded-2xl p-5">
+        <h2 class="text-sm font-600 text-white mb-4">👤 People in the News</h2>
+        <div id="figuresList" class="space-y-3 max-h-72 overflow-y-auto pr-1">
+          <p class="text-slate-500 text-xs text-center py-8">No notable figures detected yet</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- What does this mean? plain-English explainer -->
+    <section class="card rounded-2xl p-6">
+      <h2 class="text-sm font-600 text-white mb-4">🤔 What does this all mean?</h2>
+      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 text-sm">
+        <div class="card-light rounded-xl p-4">
+          <p class="text-indigo-300 font-600 mb-1">Market Mood</p>
+          <p class="text-slate-400 text-xs leading-relaxed">A score from -1 (very scary/negative news) to +1 (very exciting/positive news). Think of it like the overall vibe of today's financial news.</p>
+        </div>
+        <div class="card-light rounded-xl p-4">
+          <p class="text-orange-300 font-600 mb-1">Safe-Haven Pressure</p>
+          <p class="text-slate-400 text-xs leading-relaxed">How many articles mention "safe" assets like gold, bonds, or cash. High pressure = investors are getting nervous and moving money away from stocks.</p>
+        </div>
+        <div class="card-light rounded-xl p-4">
+          <p class="text-emerald-300 font-600 mb-1">Risk-On Activity</p>
+          <p class="text-slate-400 text-xs leading-relaxed">How many articles are talking about growth, rallies, and optimism. High = people are excited to invest. Low = caution in the air.</p>
+        </div>
+        <div class="card-light rounded-xl p-4">
+          <p class="text-rose-300 font-600 mb-1">Tipping Point Alert</p>
+          <p class="text-slate-400 text-xs leading-relaxed">Fires when both the mood is negative AND lots of articles mention gold/bonds. This is the signal that the crowd may be heading for the exit.</p>
+        </div>
+      </div>
+    </section>
+
+    <footer class="text-center text-xs text-slate-600 pb-6">
+      Young Investor Trust Project · Data refreshes every 2 hours · Sentiment powered by VADER NLP
+    </footer>
+  </main>
+
+  <script>
+    // ── state ───────────────────────────────────────────────────────────────
+    let currentTab = 'negative';
+    let allHeadlines = { negative: [], positive: [], safe_haven: [] };
+    let gaugeChart = null;
+    let trendChart = null;
+
+    // ── init ────────────────────────────────────────────────────────────────
+    document.addEventListener('DOMContentLoaded', () => {
+      initGauge();
+      initTrendChart();
+      loadLatest();
+      loadHistory();
+      // auto-refresh every 3 minutes
+      setInterval(() => { loadLatest(); loadHistory(); }, 3 * 60 * 1000);
+      // poll status every 5s when a run is in progress
+      setInterval(pollStatus, 5000);
+    });
+
+    // ── gauge ───────────────────────────────────────────────────────────────
+    function initGauge() {
+      const ctx = document.getElementById('gaugeChart').getContext('2d');
+      gaugeChart = new Chart(ctx, {
+        type: 'doughnut',
+        data: {
+          datasets: [{
+            data: [50, 50],
+            backgroundColor: ['#6366f1', 'rgba(255,255,255,0.05)'],
+            borderWidth: 0,
+            circumference: 180,
+            rotation: 270,
+          }]
+        },
+        options: {
+          cutout: '72%',
+          plugins: { legend: { display: false }, tooltip: { enabled: false } },
+          animation: { duration: 800 },
+        }
+      });
+    }
+
+    function updateGauge(score) {
+      // score is -1 to 1; map to 0-100 for the arc fill
+      const pct = Math.round((score + 1) / 2 * 100);
+      const color = score >= 0.15 ? '#4ade80' : score <= -0.15 ? '#f87171' : '#fbbf24';
+      gaugeChart.data.datasets[0].data = [pct, 100 - pct];
+      gaugeChart.data.datasets[0].backgroundColor = [color, 'rgba(255,255,255,0.05)'];
+      gaugeChart.update();
+    }
+
+    // ── trend chart ─────────────────────────────────────────────────────────
+    function initTrendChart() {
+      const ctx = document.getElementById('trendChart').getContext('2d');
+      trendChart = new Chart(ctx, {
+        type: 'line',
+        data: {
+          labels: [],
+          datasets: [
+            {
+              label: 'Sentiment',
+              data: [], borderColor: '#818cf8', backgroundColor: 'rgba(129,140,248,0.08)',
+              fill: true, tension: 0.4, pointRadius: 3,
+            },
+            {
+              label: 'SHPI',
+              data: [], borderColor: '#fb923c', backgroundColor: 'transparent',
+              fill: false, tension: 0.4, pointRadius: 3, borderDash: [4, 3],
+            },
+            {
+              label: 'Fear',
+              data: [], borderColor: '#fb7185', backgroundColor: 'transparent',
+              fill: false, tension: 0.4, pointRadius: 3, borderDash: [2, 4],
+            },
+          ]
+        },
+        options: {
+          responsive: true,
+          interaction: { mode: 'index', intersect: false },
+          scales: {
+            x: {
+              grid: { color: 'rgba(255,255,255,0.05)' },
+              ticks: { color: '#64748b', font: { size: 10 }, maxTicksLimit: 8 },
+            },
+            y: {
+              grid: { color: 'rgba(255,255,255,0.05)' },
+              ticks: { color: '#64748b', font: { size: 10 } },
+              min: -1, max: 1,
+            }
+          },
+          plugins: {
+            legend: { display: false },
+            tooltip: {
+              backgroundColor: 'rgba(15,23,42,0.9)',
+              borderColor: 'rgba(255,255,255,0.1)',
+              borderWidth: 1,
+              titleColor: '#e2e8f0',
+              bodyColor: '#94a3b8',
+            }
+          }
+        }
+      });
+    }
+
+    // ── data loading ─────────────────────────────────────────────────────────
+    async function loadLatest() {
+      try {
+        const res = await fetch('/api/latest');
+        if (!res.ok) {
+          showEmpty();
+          return;
+        }
+        const data = await res.json();
+        updateDashboard(data);
+        if (data.headlines) {
+          allHeadlines = data.headlines;
+          renderHeadlines();
+        }
+      } catch(e) {
+        console.warn('loadLatest error', e);
+      }
+    }
+
+    async function loadHistory() {
+      try {
+        const res = await fetch('/api/history?n=24');
+        if (!res.ok) return;
+        const snaps = await res.json();
+        updateTrendChart(snaps);
+      } catch(e) {
+        console.warn('loadHistory error', e);
+      }
+    }
+
+    async function pollStatus() {
+      try {
+        const res = await fetch('/api/status');
+        const data = await res.json();
+        const btn = document.getElementById('runBtn');
+        const icon = document.getElementById('runBtnIcon');
+        const txt = document.getElementById('runBtnText');
+        if (data.pipeline_running) {
+          btn.disabled = true;
+          btn.classList.add('opacity-60', 'cursor-not-allowed');
+          icon.textContent = '⏳';
+          txt.textContent = 'Running…';
+        } else {
+          btn.disabled = false;
+          btn.classList.remove('opacity-60', 'cursor-not-allowed');
+          icon.textContent = '⚡';
+          txt.textContent = 'Run Now';
+        }
+      } catch(e) {}
+    }
+
+    // ── dashboard update ──────────────────────────────────────────────────────
+    function updateDashboard(data) {
+      const score = data.overall_score ?? 0;
+      const moodLabel = data.mood_label ?? 'Unknown';
+      const shpi = data.shpi ?? 0;
+      const roi = data.risk_on_index ?? 0;
+      const fear = data.fear_score ?? 0;
+      const total = data.article_count ?? 0;
+      const pos = data.positive_count ?? 0;
+      const neg = data.negative_count ?? 0;
+      const neu = total - pos - neg;
+
+      // mood card
+      document.getElementById('moodScore').textContent = score >= 0 ? `+${score.toFixed(2)}` : score.toFixed(2);
+      document.getElementById('moodLabel').textContent = moodLabel;
+      document.getElementById('articleCount').textContent = `${total} articles analysed`;
+      updateGauge(score);
+
+      // color the mood card based on sentiment
+      const mc = document.getElementById('moodCard');
+      mc.classList.remove('glow-green', 'glow-red', 'glow-yellow', 'glow-blue');
+      if (score >= 0.15) mc.classList.add('glow-green');
+      else if (score <= -0.15) mc.classList.add('glow-red');
+      else mc.classList.add('glow-yellow');
+
+      // SHPI
+      const shpiPct = Math.round(shpi * 100);
+      document.getElementById('shpiValue').textContent = `${shpiPct}%`;
+      document.getElementById('shpiBar').style.width = `${shpiPct}%`;
+      document.getElementById('shpiBar').className = `h-2 rounded-full transition-all duration-1000 ${shpi >= 0.4 ? 'bg-red-500' : shpi >= 0.25 ? 'bg-yellow-500' : 'bg-emerald-500'}`;
+      document.getElementById('shpiLabel').textContent = shpi >= 0.4 ? 'High — investors seeking safety' : shpi >= 0.25 ? 'Moderate — some nervousness' : 'Low — confidence intact';
+
+      // Risk-On
+      const roPct = Math.round(roi * 100);
+      document.getElementById('riskOnValue').textContent = `${roPct}%`;
+      document.getElementById('riskOnBar').style.width = `${roPct}%`;
+      document.getElementById('riskOnLabel').textContent = roi >= 0.4 ? 'High — bullish momentum' : roi >= 0.2 ? 'Moderate' : 'Low — caution in the market';
+
+      // Fear
+      const fearPct = Math.round(fear * 100);
+      document.getElementById('fearValue').textContent = `${fearPct}%`;
+      document.getElementById('fearBar').style.width = `${fearPct}%`;
+      document.getElementById('fearBar').className = `h-2 rounded-full transition-all duration-1000 ${fear >= 0.6 ? 'bg-red-500' : fear >= 0.4 ? 'bg-orange-500' : 'bg-emerald-500'}`;
+
+      // Counts
+      document.getElementById('posCount').textContent = pos;
+      document.getElementById('negCount').textContent = neg;
+      document.getElementById('neuCount').textContent = Math.max(0, neu);
+
+      // Alert banner
+      const alert = data.tipping_point_alert || '';
+      const banner = document.getElementById('alertBanner');
+      if (alert) {
+        banner.textContent = alert;
+        banner.classList.remove('hidden');
+      } else {
+        banner.classList.add('hidden');
+      }
+
+      // Notable figures
+      renderFigures(data.notable_figures || []);
+
+      // Last updated
+      if (data.last_run_time) {
+        const dt = new Date(data.last_run_time);
+        document.getElementById('lastUpdated').textContent = `Updated ${dt.toLocaleTimeString()}`;
+      }
+    }
+
+    function updateTrendChart(snaps) {
+      if (!snaps || snaps.length === 0) return;
+      const labels = snaps.map(s => {
+        const d = new Date(s.snapshot_time);
+        return `${d.getMonth()+1}/${d.getDate()} ${d.getHours()}:${String(d.getMinutes()).padStart(2,'0')}`;
+      });
+      trendChart.data.labels = labels;
+      trendChart.data.datasets[0].data = snaps.map(s => s.overall_score ?? 0);
+      trendChart.data.datasets[1].data = snaps.map(s => s.shpi ?? 0);
+      trendChart.data.datasets[2].data = snaps.map(s => s.fear_score ?? 0);
+      trendChart.update();
+    }
+
+    // ── headlines ─────────────────────────────────────────────────────────────
+    function switchTab(tab, btn) {
+      currentTab = tab;
+      document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      renderHeadlines();
+    }
+
+    function renderHeadlines() {
+      const list = document.getElementById('headlineList');
+      const items = allHeadlines[currentTab] || [];
+      if (items.length === 0) {
+        list.innerHTML = `<p class="text-slate-500 text-sm text-center py-8">No ${currentTab} headlines found</p>`;
+        return;
+      }
+      list.innerHTML = items.map(h => {
+        const scoreColor = h.score >= 0.05 ? 'text-emerald-400' : h.score <= -0.05 ? 'text-red-400' : 'text-slate-400';
+        const scoreStr = h.score >= 0 ? `+${h.score.toFixed(2)}` : h.score.toFixed(2);
+        const href = h.url ? `href="${escapeHtml(h.url)}" target="_blank" rel="noopener noreferrer"` : '';
+        return `
+          <div class="headline-card rounded-xl p-3 flex items-start gap-3 cursor-pointer">
+            <span class="${scoreColor} font-700 text-xs min-w-[48px] text-right pt-0.5">${scoreStr}</span>
+            <div class="flex-1 min-w-0">
+              <a ${href} class="text-sm text-slate-200 hover:text-white leading-snug line-clamp-2">${escapeHtml(h.title)}</a>
+              <p class="text-xs text-slate-500 mt-0.5">${escapeHtml(h.source)}</p>
+            </div>
+          </div>`;
+      }).join('');
+    }
+
+    // ── figures ───────────────────────────────────────────────────────────────
+    function renderFigures(figures) {
+      const list = document.getElementById('figuresList');
+      if (!figures || figures.length === 0) {
+        list.innerHTML = `<p class="text-slate-500 text-xs text-center py-8">No notable figures detected</p>`;
+        return;
+      }
+      list.innerHTML = figures.map(f => {
+        const pillClass = f.sentiment_label === 'positive' ? 'pill-pos' : f.sentiment_label === 'negative' ? 'pill-neg' : 'pill-neu';
+        return `
+          <div class="flex items-center justify-between">
+            <div>
+              <p class="text-sm text-white font-500">${escapeHtml(f.name)}</p>
+              <p class="text-xs text-slate-500">${f.article_count} article${f.article_count !== 1 ? 's' : ''}</p>
+            </div>
+            <span class="pill ${pillClass}">${f.sentiment_label}</span>
+          </div>`;
+      }).join('');
+    }
+
+    function showEmpty() {
+      document.getElementById('moodLabel').textContent = 'No data yet';
+      document.getElementById('moodScore').textContent = '—';
+      document.getElementById('articleCount').textContent = 'Hit "Run Now" to fetch articles';
+    }
+
+    // ── run pipeline ─────────────────────────────────────────────────────────
+    async function triggerRun() {
+      const btn = document.getElementById('runBtn');
+      const icon = document.getElementById('runBtnIcon');
+      const txt = document.getElementById('runBtnText');
+      btn.disabled = true;
+      icon.textContent = '⏳';
+      txt.textContent = 'Starting…';
+      try {
+        const res = await fetch('/api/run', { method: 'POST' });
+        const data = await res.json();
+        if (data.status === 'started') {
+          txt.textContent = 'Running…';
+          // poll until done then reload
+          const poll = setInterval(async () => {
+            const s = await fetch('/api/status');
+            const sd = await s.json();
+            if (!sd.pipeline_running) {
+              clearInterval(poll);
+              await loadLatest();
+              await loadHistory();
+            }
+          }, 4000);
+        } else {
+          txt.textContent = 'Run Now';
+          btn.disabled = false;
+          icon.textContent = '⚡';
+        }
+      } catch(e) {
+        icon.textContent = '⚡';
+        txt.textContent = 'Run Now';
+        btn.disabled = false;
+      }
+    }
+
+    function escapeHtml(str) {
+      if (!str) return '';
+      return str.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    }
+  </script>
+</body>
+</html>

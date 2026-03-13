@@ -1,0 +1,51 @@
+# Triton Inference Server model configuration for FinBERT (ONNX backend)
+#
+# To use:
+# 1. Export FinBERT to ONNX: python serving/export_to_onnx.py
+# 2. Place model.onnx at: serving/triton_model_config/finbert/1/model.onnx
+# 3. Start Triton with this directory as the model repository
+#
+# Dynamic batching is enabled so Triton can batch concurrent requests
+# automatically — this is what makes inference efficient at scale.
+
+name: "finbert"
+backend: "onnxruntime"
+max_batch_size: 32
+
+input [
+  {
+    name: "input_ids"
+    data_type: TYPE_INT64
+    dims: [ -1 ]
+  },
+  {
+    name: "attention_mask"
+    data_type: TYPE_INT64
+    dims: [ -1 ]
+  },
+  {
+    name: "token_type_ids"
+    data_type: TYPE_INT64
+    dims: [ -1 ]
+  }
+]
+
+output [
+  {
+    name: "logits"
+    data_type: TYPE_FP32
+    dims: [ 3 ]
+  }
+]
+
+dynamic_batching {
+  preferred_batch_size: [ 8, 16, 32 ]
+  max_queue_delay_microseconds: 100
+}
+
+instance_group [
+  {
+    count: 1
+    kind: KIND_CPU
+  }
+]

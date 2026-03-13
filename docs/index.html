@@ -1,0 +1,1272 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Young Investor Trust — Market Mood Dashboard</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet" />
+
+  <style>
+    * { font-family: 'Inter', sans-serif; }
+
+    body {
+      background: linear-gradient(135deg, #0a0f1e 0%, #0f172a 40%, #1a1040 70%, #0a0f1e 100%);
+      min-height: 100vh;
+    }
+
+    /* Animated starfield */
+    body::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      background-image:
+        radial-gradient(1px 1px at 10% 15%, rgba(255,255,255,0.15) 0%, transparent 100%),
+        radial-gradient(1px 1px at 30% 45%, rgba(255,255,255,0.10) 0%, transparent 100%),
+        radial-gradient(1px 1px at 55% 20%, rgba(255,255,255,0.12) 0%, transparent 100%),
+        radial-gradient(1px 1px at 75% 65%, rgba(255,255,255,0.08) 0%, transparent 100%),
+        radial-gradient(1px 1px at 90% 30%, rgba(255,255,255,0.10) 0%, transparent 100%),
+        radial-gradient(1px 1px at 20% 80%, rgba(255,255,255,0.07) 0%, transparent 100%),
+        radial-gradient(1px 1px at 65% 85%, rgba(255,255,255,0.09) 0%, transparent 100%);
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    .card {
+      background: rgba(255,255,255,0.04);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      border: 1px solid rgba(255,255,255,0.08);
+    }
+    .card-hover:hover {
+      background: rgba(255,255,255,0.07);
+      border-color: rgba(255,255,255,0.15);
+      transform: translateY(-1px);
+    }
+    .card-hover { transition: all 0.2s ease; }
+
+    .glow-indigo { box-shadow: 0 0 30px rgba(99,102,241,0.25); }
+    .glow-green  { box-shadow: 0 0 25px rgba(34,197,94,0.2); }
+    .glow-red    { box-shadow: 0 0 25px rgba(239,68,68,0.2); }
+    .glow-amber  { box-shadow: 0 0 25px rgba(251,191,36,0.2); }
+
+    .pill { display:inline-block; padding:2px 10px; border-radius:9999px; font-size:0.72rem; font-weight:600; }
+    .pill-neg { background:rgba(239,68,68,0.15); color:#f87171; border:1px solid rgba(239,68,68,0.3); }
+    .pill-pos { background:rgba(34,197,94,0.15); color:#4ade80; border:1px solid rgba(34,197,94,0.3); }
+    .pill-neu { background:rgba(148,163,184,0.12); color:#94a3b8; border:1px solid rgba(148,163,184,0.2); }
+
+    .tab-btn {
+      padding: 8px 20px;
+      border-radius: 10px;
+      border: 1px solid transparent;
+      font-size: 0.8rem;
+      font-weight: 500;
+      color: #64748b;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      background: transparent;
+      white-space: nowrap;
+    }
+    .tab-btn:hover { color: #cbd5e1; background: rgba(255,255,255,0.05); }
+    .tab-btn.active {
+      background: rgba(99,102,241,0.2);
+      border-color: rgba(99,102,241,0.5);
+      color: #a5b4fc;
+    }
+
+    .pulse-dot {
+      display:inline-block; width:8px; height:8px; border-radius:50%;
+      background:#4ade80;
+      box-shadow: 0 0 6px rgba(74,222,128,0.8);
+      animation: pulse-anim 2s infinite;
+    }
+    @keyframes pulse-anim {
+      0%,100% { opacity:1; transform:scale(1); }
+      50%      { opacity:0.4; transform:scale(1.5); }
+    }
+
+    .headline-row {
+      display:flex; align-items:flex-start; gap:12px;
+      padding:12px 14px; border-radius:12px;
+      border: 1px solid rgba(255,255,255,0.05);
+      background: rgba(255,255,255,0.02);
+      transition: all 0.2s ease;
+      cursor:pointer;
+    }
+    .headline-row:hover { background:rgba(255,255,255,0.07); border-color:rgba(255,255,255,0.12); }
+
+    .alert-banner {
+      background: linear-gradient(90deg, rgba(251,146,60,0.12), rgba(239,68,68,0.12));
+      border-left: 3px solid #f97316;
+      animation: alertPulse 3s ease-in-out infinite;
+    }
+    @keyframes alertPulse {
+      0%,100% { border-left-color:#f97316; }
+      50%      { border-left-color:#ef4444; }
+    }
+
+    .chat-bubble-user {
+      background: rgba(99,102,241,0.25);
+      border: 1px solid rgba(99,102,241,0.4);
+      border-radius: 18px 18px 4px 18px;
+      padding: 10px 16px;
+      max-width: 80%;
+      align-self: flex-end;
+    }
+    .chat-bubble-ai {
+      background: rgba(255,255,255,0.05);
+      border: 1px solid rgba(255,255,255,0.1);
+      border-radius: 18px 18px 18px 4px;
+      padding: 10px 16px;
+      max-width: 88%;
+      align-self: flex-start;
+    }
+
+    .metric-bar-track {
+      width:100%; height:6px; border-radius:9999px;
+      background:rgba(255,255,255,0.08);
+      overflow:hidden;
+    }
+    .metric-bar-fill {
+      height:100%; border-radius:9999px;
+      transition: width 1.2s cubic-bezier(0.34,1.56,0.64,1);
+    }
+
+    .shimmer-block {
+      background: linear-gradient(90deg, rgba(255,255,255,0.03) 25%, rgba(255,255,255,0.08) 50%, rgba(255,255,255,0.03) 75%);
+      background-size:200% 100%;
+      animation: shimmer 1.5s infinite;
+      border-radius:8px;
+    }
+    @keyframes shimmer { 0%{background-position:200% 0} 100%{background-position:-200% 0} }
+
+    /* Gauge */
+    .gauge-wrap { position:relative; display:inline-flex; align-items:center; justify-content:center; }
+    .gauge-text  { position:absolute; text-align:center; bottom:10px; left:50%; transform:translateX(-50%); }
+
+    /* Scrollbar */
+    ::-webkit-scrollbar { width:4px; height:4px; }
+    ::-webkit-scrollbar-track { background:transparent; }
+    ::-webkit-scrollbar-thumb { background:rgba(255,255,255,0.15); border-radius:2px; }
+
+    /* Figure badge */
+    .fig-badge { display:flex; align-items:center; gap:10px; padding:10px 14px; border-radius:12px; background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.07); }
+
+    /* Search result card */
+    .search-card { padding:14px; border-radius:12px; background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.07); transition:all 0.2s; }
+    .search-card:hover { background:rgba(255,255,255,0.07); }
+
+    /* Typing animation */
+    .typing-dots span {
+      display:inline-block; width:6px; height:6px; border-radius:50%;
+      background:#6366f1; margin:0 2px;
+      animation: typingBounce 1.2s infinite;
+    }
+    .typing-dots span:nth-child(2) { animation-delay:0.2s; }
+    .typing-dots span:nth-child(3) { animation-delay:0.4s; }
+    @keyframes typingBounce {
+      0%,80%,100% { transform:translateY(0); opacity:0.4; }
+      40%          { transform:translateY(-6px); opacity:1; }
+    }
+
+    /* Hide sections */
+    .tab-section { display:none; }
+    .tab-section.active { display:block; }
+  </style>
+</head>
+<body class="text-white relative">
+
+<!-- ═══════════════════════════════════  NAV  ══════════════════════════════════ -->
+<nav class="card sticky top-0 z-50 border-b border-white/8 px-5 py-3">
+  <div class="max-w-7xl mx-auto flex items-center justify-between gap-4">
+
+    <div class="flex items-center gap-3 shrink-0">
+      <div class="w-9 h-9 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-lg shadow-lg">📊</div>
+      <div>
+        <p class="text-sm font-700 leading-tight text-white">Young Investor Trust</p>
+        <p class="text-xs text-slate-400 leading-tight">Market Mood Dashboard</p>
+      </div>
+    </div>
+
+    <!-- Tabs -->
+    <div class="flex items-center gap-1 overflow-x-auto scrollbar-none">
+      <button class="tab-btn active" onclick="showTab('overview',this)">📊 Overview</button>
+      <button class="tab-btn" onclick="showTab('headlines',this)">📰 Headlines</button>
+      <button class="tab-btn" onclick="showTab('chat',this)">🤖 AI Insights</button>
+      <button class="tab-btn" onclick="showTab('search',this)">🔍 Search</button>
+      <button class="tab-btn" onclick="showTab('mlops',this)">⚙️ MLOps</button>
+    </div>
+
+    <div class="flex items-center gap-3 shrink-0">
+      <span class="hidden md:flex items-center gap-2 text-xs text-slate-400">
+        <span class="pulse-dot"></span>
+        Live · Updated <span id="lastUpdatedLabel">just now</span>
+      </span>
+      <button id="runBtn" onclick="simulateRun()"
+        class="bg-indigo-600 hover:bg-indigo-500 active:scale-95 transition-all text-white text-xs font-600 px-4 py-2 rounded-lg flex items-center gap-2 shrink-0">
+        <span id="runIcon">⚡</span>
+        <span id="runLabel">Run Analysis</span>
+      </button>
+    </div>
+
+  </div>
+</nav>
+
+<!-- Tipping Point Alert -->
+<div id="alertBanner" class="alert-banner mx-4 mt-4 px-5 py-3 rounded-xl text-sm font-500 text-orange-200 flex items-center gap-3">
+  <span class="text-xl">⚠️</span>
+  <div>
+    <span class="font-700">TIPPING POINT ALERT — </span>
+    Safe-Haven Pressure Index has crossed 40% with negative overall sentiment. Market narrative is shifting toward gold &amp; bonds.
+    <span class="text-orange-300 text-xs ml-2">(SHPI 0.42 · Sentiment −0.31)</span>
+  </div>
+</div>
+
+<main class="max-w-7xl mx-auto px-4 py-6 space-y-6 relative z-10">
+
+<!-- ═══════════════════════════════  TAB: OVERVIEW  ═══════════════════════════ -->
+<div id="tab-overview" class="tab-section active space-y-5">
+
+  <!-- Row 1: Mood card + 4 metric cards -->
+  <section class="grid grid-cols-1 lg:grid-cols-3 gap-4">
+
+    <!-- Mood gauge card -->
+    <div class="card rounded-2xl p-6 flex flex-col items-center justify-center text-center glow-indigo min-h-[260px]">
+      <p class="text-xs text-slate-400 uppercase tracking-widest mb-1">Market Mood</p>
+      <div class="gauge-wrap my-2">
+        <canvas id="gaugeChart" width="200" height="110"></canvas>
+        <div class="gauge-text">
+          <p class="text-3xl font-900 text-white" id="gaugeScore">−0.31</p>
+          <p class="text-xs text-slate-400">compound</p>
+        </div>
+      </div>
+      <p class="text-lg font-800 mt-1 text-red-400" id="moodLabel">Safe-Haven Flight</p>
+      <p class="text-xs text-slate-500 mt-1">47 articles analysed</p>
+      <div class="mt-3 pill pill-neg">⚠️ Caution — shifting to safe havens</div>
+    </div>
+
+    <!-- 4 metrics -->
+    <div class="lg:col-span-2 grid grid-cols-2 gap-4">
+
+      <!-- SHPI -->
+      <div class="card rounded-2xl p-5 glow-red">
+        <div class="flex items-center justify-between mb-3">
+          <p class="text-xs text-slate-400 uppercase tracking-widest">Safe-Haven Pressure</p>
+          <span class="text-2xl">🛡️</span>
+        </div>
+        <p class="text-3xl font-800 text-red-400">42%</p>
+        <div class="metric-bar-track mt-2">
+          <div class="metric-bar-fill bg-gradient-to-r from-amber-500 to-red-500" style="width:42%"></div>
+        </div>
+        <p class="text-xs text-slate-400 mt-1">Above alert threshold (40%)</p>
+      </div>
+
+      <!-- Risk-On -->
+      <div class="card rounded-2xl p-5">
+        <div class="flex items-center justify-between mb-3">
+          <p class="text-xs text-slate-400 uppercase tracking-widest">Risk-On Activity</p>
+          <span class="text-2xl">📈</span>
+        </div>
+        <p class="text-3xl font-800 text-slate-300">14%</p>
+        <div class="metric-bar-track mt-2">
+          <div class="metric-bar-fill bg-emerald-500" style="width:14%"></div>
+        </div>
+        <p class="text-xs text-slate-400 mt-1">Suppressed — investors cautious</p>
+      </div>
+
+      <!-- Fear Score -->
+      <div class="card rounded-2xl p-5 glow-amber">
+        <div class="flex items-center justify-between mb-3">
+          <p class="text-xs text-slate-400 uppercase tracking-widest">Fear Score</p>
+          <span class="text-2xl">😰</span>
+        </div>
+        <p class="text-3xl font-800 text-amber-400">0.62</p>
+        <div class="metric-bar-track mt-2">
+          <div class="metric-bar-fill bg-gradient-to-r from-yellow-500 to-orange-500" style="width:62%"></div>
+        </div>
+        <p class="text-xs text-slate-400 mt-1">Elevated — 0 = calm · 1 = panic</p>
+      </div>
+
+      <!-- Sentiment Mix -->
+      <div class="card rounded-2xl p-5">
+        <div class="flex items-center justify-between mb-3">
+          <p class="text-xs text-slate-400 uppercase tracking-widest">Sentiment Mix</p>
+          <span class="text-2xl">🗞️</span>
+        </div>
+        <div class="space-y-2 text-sm">
+          <div class="flex justify-between items-center">
+            <span class="text-emerald-400 flex items-center gap-1"><span class="w-2 h-2 bg-emerald-400 rounded-full inline-block"></span>Positive</span>
+            <span class="font-700">11</span>
+          </div>
+          <div class="flex justify-between items-center">
+            <span class="text-red-400 flex items-center gap-1"><span class="w-2 h-2 bg-red-400 rounded-full inline-block"></span>Negative</span>
+            <span class="font-700">26</span>
+          </div>
+          <div class="flex justify-between items-center">
+            <span class="text-slate-400 flex items-center gap-1"><span class="w-2 h-2 bg-slate-400 rounded-full inline-block"></span>Neutral</span>
+            <span class="font-700">10</span>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- Row 2: 24h trend + Notable figures -->
+  <section class="grid grid-cols-1 lg:grid-cols-3 gap-4">
+
+    <div class="card rounded-2xl p-5 lg:col-span-2">
+      <div class="flex items-center justify-between mb-4">
+        <div>
+          <p class="text-sm font-600 text-white">24-Hour Sentiment Trend</p>
+          <p class="text-xs text-slate-400 mt-0.5">Overall compound score tracked hourly</p>
+        </div>
+        <div class="flex items-center gap-3 text-xs text-slate-400">
+          <span class="flex items-center gap-1"><span class="w-3 h-0.5 bg-indigo-400 inline-block rounded"></span>Sentiment</span>
+          <span class="flex items-center gap-1"><span class="w-3 h-0.5 bg-red-400 inline-block rounded border-dashed border-t border-red-400"></span>SHPI</span>
+        </div>
+      </div>
+      <canvas id="trendChart" height="120"></canvas>
+    </div>
+
+    <!-- Notable Figures -->
+    <div class="card rounded-2xl p-5">
+      <p class="text-sm font-600 text-white mb-3">👤 Notable Figures</p>
+      <div class="space-y-2" id="figuresList">
+        <!-- populated by JS -->
+      </div>
+    </div>
+
+  </section>
+
+  <!-- Row 3: Donut + Safe haven signal list -->
+  <section class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+
+    <div class="card rounded-2xl p-5 flex flex-col items-center">
+      <p class="text-sm font-600 text-white mb-4 self-start">Sentiment Breakdown</p>
+      <canvas id="donutChart" width="200" height="200"></canvas>
+      <div class="flex items-center gap-6 mt-4 text-xs text-slate-400">
+        <span class="flex items-center gap-1.5"><span class="w-3 h-3 bg-emerald-500 rounded-full"></span>Positive (23%)</span>
+        <span class="flex items-center gap-1.5"><span class="w-3 h-3 bg-red-500 rounded-full"></span>Negative (55%)</span>
+        <span class="flex items-center gap-1.5"><span class="w-3 h-3 bg-slate-500 rounded-full"></span>Neutral (21%)</span>
+      </div>
+    </div>
+
+    <div class="card rounded-2xl p-5">
+      <p class="text-sm font-600 text-white mb-3">🛡️ Active Safe-Haven Signals</p>
+      <div class="space-y-2" id="safeHavenList">
+        <!-- populated by JS -->
+      </div>
+    </div>
+
+  </section>
+
+</div>
+
+<!-- ══════════════════════════════  TAB: HEADLINES  ══════════════════════════ -->
+<div id="tab-headlines" class="tab-section space-y-5">
+
+  <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+
+    <!-- Negative headlines -->
+    <div class="card rounded-2xl p-5">
+      <p class="text-sm font-600 text-white mb-4 flex items-center gap-2">
+        <span class="text-red-400 text-lg">🔴</span> Most Bearish Headlines
+        <span class="pill pill-neg ml-auto">26 total</span>
+      </p>
+      <div class="space-y-2" id="negHeadlines"></div>
+    </div>
+
+    <!-- Positive headlines -->
+    <div class="card rounded-2xl p-5">
+      <p class="text-sm font-600 text-white mb-4 flex items-center gap-2">
+        <span class="text-emerald-400 text-lg">🟢</span> Most Bullish Headlines
+        <span class="pill pill-pos ml-auto">11 total</span>
+      </p>
+      <div class="space-y-2" id="posHeadlines"></div>
+    </div>
+
+  </div>
+
+  <!-- Safe-Haven signals full list -->
+  <div class="card rounded-2xl p-5">
+    <p class="text-sm font-600 text-white mb-4 flex items-center gap-2">
+      <span class="text-amber-400 text-lg">🛡️</span> Safe-Haven Trigger Articles
+      <span class="text-xs text-slate-400 ml-2">(Articles explicitly signalling a move toward gold, bonds or cash)</span>
+      <span class="pill pill-neg ml-auto">20 articles</span>
+    </p>
+    <div class="grid grid-cols-1 sm:grid-cols-2 gap-2" id="shHeadlines"></div>
+  </div>
+
+</div>
+
+<!-- ═══════════════════════════════  TAB: AI INSIGHTS  ═══════════════════════ -->
+<div id="tab-chat" class="tab-section">
+
+  <div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
+
+    <!-- Chat panel -->
+    <div class="card rounded-2xl p-5 lg:col-span-2 flex flex-col" style="height:600px;">
+      <div class="flex items-center gap-3 mb-4 pb-4 border-b border-white/8">
+        <div class="w-9 h-9 rounded-xl bg-gradient-to-br from-violet-500 to-indigo-600 flex items-center justify-center text-lg">🤖</div>
+        <div>
+          <p class="text-sm font-600 text-white">Market Intelligence AI</p>
+          <p class="text-xs text-slate-400">Powered by RAG · LangChain · FinBERT · ChromaDB</p>
+        </div>
+        <span class="ml-auto flex items-center gap-1.5 text-xs text-emerald-400">
+          <span class="pulse-dot"></span> Ready
+        </span>
+      </div>
+
+      <div id="chatMessages" class="flex-1 overflow-y-auto space-y-3 mb-4 pr-1">
+        <!-- Intro message -->
+        <div class="chat-bubble-ai">
+          <p class="text-sm text-slate-200">👋 Hey there! I'm your Market Intelligence AI, trained on financial news data and powered by a Retrieval-Augmented Generation (RAG) pipeline.</p>
+          <p class="text-sm text-slate-300 mt-2">I can help you understand what's happening in global markets right now. Try asking me anything — for example:</p>
+          <ul class="mt-2 space-y-1 text-xs text-slate-400">
+            <li>• "Why is the market bearish today?"</li>
+            <li>• "Should I be worried about inflation?"</li>
+            <li>• "What are people saying about gold?"</li>
+            <li>• "What is the Fed doing?"</li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="flex gap-2">
+        <input id="chatInput" type="text" placeholder="Ask anything about markets, gold, inflation, central banks…"
+          class="flex-1 bg-white/5 border border-white/10 rounded-xl px-4 py-2.5 text-sm text-white placeholder-slate-500 outline-none focus:border-indigo-500 focus:bg-white/8 transition-all"
+          onkeydown="if(event.key==='Enter') sendChat()" />
+        <button onclick="sendChat()"
+          class="bg-indigo-600 hover:bg-indigo-500 active:scale-95 transition-all px-4 py-2.5 rounded-xl text-sm font-600 text-white shrink-0">
+          Send ↑
+        </button>
+      </div>
+    </div>
+
+    <!-- Quick prompts + RAG info -->
+    <div class="space-y-4">
+
+      <div class="card rounded-2xl p-5">
+        <p class="text-sm font-600 text-white mb-3">💡 Quick Questions</p>
+        <div class="space-y-2">
+          <button class="quick-prompt w-full text-left text-xs text-slate-300 px-3 py-2 rounded-lg bg-white/3 border border-white/7 hover:bg-white/8 transition-all"
+            onclick="askQuick('Why is the market bearish today?')">Why is the market bearish today?</button>
+          <button class="quick-prompt w-full text-left text-xs text-slate-300 px-3 py-2 rounded-lg bg-white/3 border border-white/7 hover:bg-white/8 transition-all"
+            onclick="askQuick('What is happening with gold prices?')">What is happening with gold prices?</button>
+          <button class="quick-prompt w-full text-left text-xs text-slate-300 px-3 py-2 rounded-lg bg-white/3 border border-white/7 hover:bg-white/8 transition-all"
+            onclick="askQuick('Should I be worried about inflation?')">Should I be worried about inflation?</button>
+          <button class="quick-prompt w-full text-left text-xs text-slate-300 px-3 py-2 rounded-lg bg-white/3 border border-white/7 hover:bg-white/8 transition-all"
+            onclick="askQuick('What is the Federal Reserve saying?')">What is the Federal Reserve saying?</button>
+          <button class="quick-prompt w-full text-left text-xs text-slate-300 px-3 py-2 rounded-lg bg-white/3 border border-white/7 hover:bg-white/8 transition-all"
+            onclick="askQuick('Is this a good time to invest in stocks?')">Is this a good time to invest in stocks?</button>
+          <button class="quick-prompt w-full text-left text-xs text-slate-300 px-3 py-2 rounded-lg bg-white/3 border border-white/7 hover:bg-white/8 transition-all"
+            onclick="askQuick('What does Warren Buffett think about the market?')">What does Warren Buffett think?</button>
+        </div>
+      </div>
+
+      <div class="card rounded-2xl p-5">
+        <p class="text-sm font-600 text-white mb-3">🧠 How It Works</p>
+        <div class="space-y-2 text-xs text-slate-400">
+          <div class="flex items-start gap-2">
+            <span class="text-indigo-400 shrink-0">①</span>
+            <span>47 articles indexed into ChromaDB vector store using sentence-transformers embeddings</span>
+          </div>
+          <div class="flex items-start gap-2">
+            <span class="text-indigo-400 shrink-0">②</span>
+            <span>Your question is embedded and top-5 semantically similar articles are retrieved</span>
+          </div>
+          <div class="flex items-start gap-2">
+            <span class="text-indigo-400 shrink-0">③</span>
+            <span>LangChain LCEL chain combines retrieved context + FinBERT sentiment scores to generate your answer</span>
+          </div>
+          <div class="flex items-start gap-2">
+            <span class="text-indigo-400 shrink-0">④</span>
+            <span>Grounded in real article sources — no hallucinations about today's news</span>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════  TAB: SEARCH  ════════════════════════════ -->
+<div id="tab-search" class="tab-section space-y-5">
+
+  <div class="card rounded-2xl p-5">
+    <p class="text-sm font-600 text-white mb-1">🔍 Semantic Article Search</p>
+    <p class="text-xs text-slate-400 mb-4">Search 47 indexed articles by meaning, not just keywords — powered by sentence-transformers + ChromaDB</p>
+    <div class="flex gap-2">
+      <input id="searchInput" type="text" placeholder="e.g. 'central bank interest rates', 'gold safe haven', 'tech earnings'…"
+        class="flex-1 bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm text-white placeholder-slate-500 outline-none focus:border-indigo-500 transition-all"
+        onkeydown="if(event.key==='Enter') doSearch()" />
+      <button onclick="doSearch()"
+        class="bg-indigo-600 hover:bg-indigo-500 active:scale-95 transition-all px-5 py-3 rounded-xl text-sm font-600 text-white shrink-0">
+        Search
+      </button>
+    </div>
+  </div>
+
+  <!-- Preset searches -->
+  <div class="flex flex-wrap gap-2">
+    <span class="text-xs text-slate-400 self-center">Try:</span>
+    <button onclick="presetSearch('inflation rate hike')"   class="text-xs px-3 py-1.5 rounded-lg bg-white/5 border border-white/8 text-slate-300 hover:bg-white/10 transition-all">inflation rate hike</button>
+    <button onclick="presetSearch('gold safe haven')"       class="text-xs px-3 py-1.5 rounded-lg bg-white/5 border border-white/8 text-slate-300 hover:bg-white/10 transition-all">gold safe haven</button>
+    <button onclick="presetSearch('recession fear')"        class="text-xs px-3 py-1.5 rounded-lg bg-white/5 border border-white/8 text-slate-300 hover:bg-white/10 transition-all">recession fear</button>
+    <button onclick="presetSearch('tech stock earnings')"   class="text-xs px-3 py-1.5 rounded-lg bg-white/5 border border-white/8 text-slate-300 hover:bg-white/10 transition-all">tech stock earnings</button>
+    <button onclick="presetSearch('Federal Reserve policy')" class="text-xs px-3 py-1.5 rounded-lg bg-white/5 border border-white/8 text-slate-300 hover:bg-white/10 transition-all">Federal Reserve policy</button>
+  </div>
+
+  <div id="searchResults" class="space-y-3"></div>
+
+</div>
+
+<!-- ═══════════════════════════════  TAB: MLOPS  ════════════════════════════ -->
+<div id="tab-mlops" class="tab-section space-y-5">
+
+  <!-- Top row: Model health + W&B run -->
+  <div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
+
+    <!-- Sentiment Model Health -->
+    <div class="card rounded-2xl p-5">
+      <p class="text-sm font-600 text-white mb-4">🧩 Model Stack</p>
+      <div class="space-y-3">
+        <div class="flex items-center justify-between py-2 border-b border-white/5">
+          <div>
+            <p class="text-xs font-500 text-white">VADER Lexicon</p>
+            <p class="text-xs text-slate-400">Fast headline scorer</p>
+          </div>
+          <span class="pill pill-pos">Active</span>
+        </div>
+        <div class="flex items-center justify-between py-2 border-b border-white/5">
+          <div>
+            <p class="text-xs font-500 text-white">FinBERT (ProsusAI)</p>
+            <p class="text-xs text-slate-400">Financial domain NLP</p>
+          </div>
+          <span class="pill pill-neu">Available</span>
+        </div>
+        <div class="flex items-center justify-between py-2 border-b border-white/5">
+          <div>
+            <p class="text-xs font-500 text-white">all-MiniLM-L6-v2</p>
+            <p class="text-xs text-slate-400">Embeddings (384d)</p>
+          </div>
+          <span class="pill pill-pos">Active</span>
+        </div>
+        <div class="flex items-center justify-between py-2">
+          <div>
+            <p class="text-xs font-500 text-white">Triton Inference Server</p>
+            <p class="text-xs text-slate-400">ONNX serving layer</p>
+          </div>
+          <span class="pill pill-neu">Not configured</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- W&B run stats -->
+    <div class="card rounded-2xl p-5">
+      <p class="text-sm font-600 text-white mb-4 flex items-center gap-2">
+        <svg class="w-4 h-4" viewBox="0 0 24 24" fill="#f5a623"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2z"/></svg>
+        Weights &amp; Biases
+      </p>
+      <p class="text-xs text-slate-400 mb-3">Project: <span class="text-indigo-300">young-investor-trust</span></p>
+      <div class="space-y-2 text-xs">
+        <div class="flex justify-between"><span class="text-slate-400">Last run ID</span><span class="text-white font-500 font-mono">run_3f8a2c1</span></div>
+        <div class="flex justify-between"><span class="text-slate-400">Articles processed</span><span class="text-white font-500">47</span></div>
+        <div class="flex justify-between"><span class="text-slate-400">Avg VADER score</span><span class="text-red-400 font-500">−0.31</span></div>
+        <div class="flex justify-between"><span class="text-slate-400">Safe-haven signals</span><span class="text-amber-400 font-500">20 / 47</span></div>
+        <div class="flex justify-between"><span class="text-slate-400">Run duration</span><span class="text-white font-500">4.2 s</span></div>
+        <div class="flex justify-between"><span class="text-slate-400">Mode</span><span class="text-white font-500">offline</span></div>
+      </div>
+      <div class="mt-4 text-xs text-slate-500">Set <code class="text-indigo-300">WANDB_API_KEY</code> in <code class="text-indigo-300">.env</code> to stream live to W&amp;B cloud.</div>
+    </div>
+
+    <!-- Model Registry -->
+    <div class="card rounded-2xl p-5">
+      <p class="text-sm font-600 text-white mb-4">📦 Model Registry</p>
+      <div class="space-y-2">
+        <div class="search-card">
+          <div class="flex items-center justify-between mb-1">
+            <p class="text-xs font-600 text-white">finbert-finetuned</p>
+            <span class="pill pill-pos text-xs">production</span>
+          </div>
+          <p class="text-xs text-slate-400">v1.2.3 · F1: 0.871</p>
+          <p class="text-xs text-slate-500 mt-1">Registered 2026-02-28</p>
+        </div>
+        <div class="search-card">
+          <div class="flex items-center justify-between mb-1">
+            <p class="text-xs font-600 text-white">finbert-base</p>
+            <span class="pill pill-neu text-xs">staging</span>
+          </div>
+          <p class="text-xs text-slate-400">v1.0.0 · F1: 0.841</p>
+          <p class="text-xs text-slate-500 mt-1">ProsusAI/finbert baseline</p>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- Drift detection + 7-day sentiment trend -->
+  <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+
+    <!-- Drift monitor -->
+    <div class="card rounded-2xl p-5">
+      <p class="text-sm font-600 text-white mb-4">📉 Drift Detection (KS Test + PSI)</p>
+      <div class="space-y-3">
+        <div class="flex items-center justify-between p-3 rounded-xl bg-amber-500/8 border border-amber-500/20">
+          <div>
+            <p class="text-xs font-600 text-amber-300">Moderate Drift Detected</p>
+            <p class="text-xs text-slate-400 mt-0.5">Overall sentiment distribution shifted significantly vs 24h baseline</p>
+          </div>
+          <span class="text-2xl ml-3">⚠️</span>
+        </div>
+        <div class="grid grid-cols-2 gap-3 text-xs">
+          <div class="bg-white/3 rounded-lg p-3 border border-white/6">
+            <p class="text-slate-400">KS Statistic</p>
+            <p class="text-white font-700 text-lg">0.214</p>
+            <p class="text-slate-500">p-value: 0.031</p>
+          </div>
+          <div class="bg-white/3 rounded-lg p-3 border border-white/6">
+            <p class="text-slate-400">PSI Score</p>
+            <p class="text-amber-400 font-700 text-lg">0.18</p>
+            <p class="text-slate-500">Moderate shift (>0.1)</p>
+          </div>
+          <div class="bg-white/3 rounded-lg p-3 border border-white/6">
+            <p class="text-slate-400">Baseline window</p>
+            <p class="text-white font-600">24 snapshots</p>
+          </div>
+          <div class="bg-white/3 rounded-lg p-3 border border-white/6">
+            <p class="text-slate-400">Feature drifted</p>
+            <p class="text-white font-600">overall_score</p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 7-day chart -->
+    <div class="card rounded-2xl p-5">
+      <p class="text-sm font-600 text-white mb-1">7-Day Mood Evolution</p>
+      <p class="text-xs text-slate-400 mb-4">Daily averaged compound sentiment + SHPI over the past week</p>
+      <canvas id="weekChart" height="150"></canvas>
+    </div>
+
+  </div>
+
+  <!-- Vector store + Triton config -->
+  <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+
+    <div class="card rounded-2xl p-5">
+      <p class="text-sm font-600 text-white mb-4">🗂️ ChromaDB Vector Store</p>
+      <div class="grid grid-cols-2 gap-3 text-xs">
+        <div class="bg-white/3 rounded-lg p-3 border border-white/6">
+          <p class="text-slate-400">Documents indexed</p>
+          <p class="text-indigo-300 font-800 text-2xl">47</p>
+        </div>
+        <div class="bg-white/3 rounded-lg p-3 border border-white/6">
+          <p class="text-slate-400">Embedding dim</p>
+          <p class="text-white font-700 text-2xl">384</p>
+        </div>
+        <div class="bg-white/3 rounded-lg p-3 border border-white/6">
+          <p class="text-slate-400">Collection</p>
+          <p class="text-white font-600">market_articles</p>
+        </div>
+        <div class="bg-white/3 rounded-lg p-3 border border-white/6">
+          <p class="text-slate-400">Persist path</p>
+          <p class="text-white font-600">data/chroma_db</p>
+        </div>
+      </div>
+      <div class="mt-3 text-xs text-slate-400">Distance metric: cosine · RAG top-k: 5</div>
+    </div>
+
+    <div class="card rounded-2xl p-5">
+      <p class="text-sm font-600 text-white mb-4">🚀 Triton Inference Server</p>
+      <div class="flex items-center gap-3 p-3 rounded-xl bg-slate-500/8 border border-slate-500/20 mb-3">
+        <span class="text-xl">💤</span>
+        <div>
+          <p class="text-xs font-600 text-slate-300">Not configured — using local inference</p>
+          <p class="text-xs text-slate-400 mt-0.5">Set <code class="text-indigo-300">USE_TRITON=true</code> and <code class="text-indigo-300">TRITON_URL</code> in .env to enable</p>
+        </div>
+      </div>
+      <p class="text-xs text-slate-400 mb-2">When enabled, Triton serves FinBERT via ONNX for:</p>
+      <ul class="space-y-1 text-xs text-slate-400">
+        <li class="flex items-start gap-1.5"><span class="text-indigo-400">→</span> 3-10× faster inference vs PyTorch</li>
+        <li class="flex items-start gap-1.5"><span class="text-indigo-400">→</span> Batched HTTP/gRPC requests</li>
+        <li class="flex items-start gap-1.5"><span class="text-indigo-400">→</span> Dynamic batching + GPU acceleration</li>
+        <li class="flex items-start gap-1.5"><span class="text-indigo-400">→</span> Model config: <code class="text-indigo-300">serving/triton_model_config/finbert/</code></li>
+      </ul>
+    </div>
+
+  </div>
+
+</div>
+
+</main>
+
+<!-- ══════════════════════════════  FOOTER  ════════════════════════════════ -->
+<footer class="border-t border-white/6 mt-10 py-6 px-4 text-center text-xs text-slate-500 relative z-10">
+  <p>Young Investor Trust · Financial News Sentiment Analysis Platform</p>
+  <p class="mt-1">VADER · FinBERT · LangChain · ChromaDB · Weights &amp; Biases · Triton · SQLAlchemy · Flask</p>
+  <p class="mt-1 text-slate-600">Data is for educational and research purposes only — not financial advice.</p>
+</footer>
+
+
+<script>
+// ══════════════════════════════════════════════
+//  DEMO DATA
+// ══════════════════════════════════════════════
+
+const DEMO = {
+  mood: {
+    overall_score: -0.31,
+    shpi: 0.42,
+    risk_on_index: 0.14,
+    fear_score: 0.62,
+    mood_label: "Safe-Haven Flight",
+    tipping_point_alert: "⚠️ CAUTION: Market sentiment shifting toward safe havens",
+    article_count: 47,
+    positive_count: 11,
+    negative_count: 26,
+    safe_haven_count: 20,
+    risk_on_count: 7,
+  },
+  figures: [
+    { name:"Jerome Powell",   article_count:8,  avg_sentiment:-0.42, sentiment_label:"negative" },
+    { name:"Federal Reserve", article_count:6,  avg_sentiment:-0.28, sentiment_label:"negative" },
+    { name:"IMF",             article_count:4,  avg_sentiment:-0.31, sentiment_label:"negative" },
+    { name:"Janet Yellen",    article_count:3,  avg_sentiment: 0.05, sentiment_label:"neutral"  },
+    { name:"Warren Buffett",  article_count:2,  avg_sentiment: 0.38, sentiment_label:"positive" },
+    { name:"World Bank",      article_count:2,  avg_sentiment:-0.14, sentiment_label:"negative" },
+  ],
+  negHeadlines: [
+    { title:"Fed signals further rate hikes amid persistent inflation",       score:-0.72, source:"Reuters" },
+    { title:"Global markets tumble on renewed recession fears",               score:-0.68, source:"BBC Business" },
+    { title:"Oil prices surge as Middle East tensions escalate sharply",      score:-0.61, source:"CNBC" },
+    { title:"Tech selloff deepens as Q1 earnings disappoint Wall Street",     score:-0.58, source:"MarketWatch" },
+    { title:"IMF warns of significantly slowing global growth in 2026",       score:-0.54, source:"Reuters" },
+    { title:"Banking sector under pressure as credit default rates climb",    score:-0.49, source:"Financial Times" },
+    { title:"Dollar weakens ahead of crucial non-farm payrolls data",         score:-0.41, source:"Bloomberg" },
+  ],
+  posHeadlines: [
+    { title:"Gold hits 3-month high as investors scramble for safe assets",   score: 0.45, source:"Reuters" },
+    { title:"Warren Buffett increases Berkshire cash reserves to record high",score: 0.38, source:"CNBC" },
+    { title:"Bond yields fall sharply as safe-haven demand surges",           score: 0.34, source:"MarketWatch" },
+    { title:"Swiss franc strengthens against major currencies amid volatility",score:0.29, source:"Bloomberg" },
+    { title:"Defensive stocks outperform growth shares in sector rotation",   score: 0.27, source:"Reuters" },
+    { title:"ETF flows reveal record shift into US Treasury bonds this week", score: 0.22, source:"MarketWatch" },
+    { title:"Commodity funds see largest gold inflows since March 2020",      score: 0.19, source:"CNBC" },
+  ],
+  shHeadlines: [
+    { title:"Gold hits 3-month high as investors scramble for safe assets",      score:-0.31, source:"Reuters" },
+    { title:"Central banks accelerating gold reserve purchases amid uncertainty",score:-0.44, source:"Bloomberg" },
+    { title:"Bond market rally signals broad risk-off sentiment across G7",      score:-0.39, source:"Reuters" },
+    { title:"Safe-haven currencies surge as geopolitical tensions escalate",     score:-0.52, source:"CNBC" },
+    { title:"Analysts flag bear market signals as inflation data disappoints",   score:-0.61, source:"MarketWatch" },
+    { title:"Investors pivot to cash as equity volatility reaches 18-month high",score:-0.48, source:"Financial Times" },
+    { title:"Fear and Greed index falls to 'Extreme Fear' territory",           score:-0.67, source:"CNN Business" },
+    { title:"Hedge funds increase short positions on US equities",              score:-0.43, source:"Reuters" },
+  ],
+  // 24h hourly data
+  trend24h: (() => {
+    const base = [0.12,0.10,0.08,0.09,0.06,0.03,-0.01,-0.04,-0.07,-0.09,-0.12,-0.15,
+                  -0.17,-0.19,-0.22,-0.24,-0.25,-0.27,-0.28,-0.29,-0.30,-0.31,-0.31,-0.31];
+    const shpi = [0.20,0.19,0.21,0.20,0.22,0.23,0.25,0.26,0.28,0.30,0.31,0.33,
+                  0.34,0.35,0.37,0.38,0.39,0.40,0.41,0.42,0.42,0.42,0.42,0.42];
+    const labels = Array.from({length:24}, (_,i) => {
+      const h = new Date(); h.setHours(h.getHours() - (23-i)); return h.getHours()+':00';
+    });
+    return { base, shpi, labels };
+  })(),
+  // 7-day data
+  week: {
+    sentiment: [0.18, 0.12, 0.05, -0.08, -0.18, -0.25, -0.31],
+    shpi:      [0.18, 0.21, 0.24, 0.29,  0.34,  0.39,  0.42 ],
+    labels: (() => {
+      return Array.from({length:7}, (_,i) => {
+        const d = new Date(); d.setDate(d.getDate()-(6-i));
+        return d.toLocaleDateString('en-GB',{day:'numeric',month:'short'});
+      });
+    })(),
+  },
+};
+
+// ══════════════════════════════════════════════
+//  RAG RESPONSES  (pre-canned, realistic)
+// ══════════════════════════════════════════════
+const RAG_ANSWERS = [
+  {
+    triggers: ["bearish","why","market down","falling","dropping","negative"],
+    answer: `📰 **Based on 47 articles indexed today**, the bearish sentiment (overall score: **−0.31**) is being driven by three converging factors:\n\n1. **Fed rate hike signals** — Jerome Powell's latest remarks (mentioned in 8 articles, avg sentiment −0.42) suggest further tightening. This directly pressures equity valuations, especially growth stocks.\n\n2. **Recession language rising** — phrases like "economic slowdown", "credit tightening", and "GDP contraction risk" appear in 14 of the 47 articles analysed.\n\n3. **Geopolitical uncertainty** — escalating Middle East tensions and energy price volatility are weighing on investor confidence.\n\n💡 For a young investor: bearish markets feel scary, but they can also be opportunities to gradually enter positions at lower prices — especially if your time horizon is 5+ years.`
+  },
+  {
+    triggers: ["gold","safe haven","precious metal"],
+    answer: `🥇 **Gold is the top story in today's safe-haven narrative.**\n\nOur Safe-Haven Pressure Index (SHPI) has crossed **42%**, above the 40% alert threshold, and gold-related headlines are among the most semantically prominent:\n\n• "Gold hits 3-month high as investors scramble for safe assets" (+0.45)\n• "Central banks accelerating gold reserve purchases" (−0.44 fear context)\n• "Commodity funds see largest gold inflows since March 2020" (+0.19)\n\nThe RAG pipeline retrieved these 3 articles as most semantically similar to "gold safe haven" based on cosine similarity in ChromaDB.\n\n💡 Gold tends to perform well when:\n— Real interest rates are negative or falling\n— Inflation is high and persistent\n— Geopolitical uncertainty is elevated\n\nAll three conditions appear to be present right now based on today's news.`
+  },
+  {
+    triggers: ["inflation","prices","cpi","rate"],
+    answer: `📊 **Inflation remains the dominant macro risk in today's news cycle.**\n\nKey signals from the NLP analysis:\n\n• The keyword "inflation" matched in **19 out of 47 articles** (40.4%), the highest-frequency risk-off keyword today.\n• The Federal Reserve's messaging (6 articles, avg −0.28) is clearly hawkish — multiple headlines reference "further tightening" and "rate hikes".\n• The IMF warning on global growth (avg −0.31) adds another layer of concern.\n\nFinBERT analysis of Fed-related headlines scores them as **"negative"** with high confidence (avg score 0.79).\n\n💡 For young investors: high inflation erodes the purchasing power of cash. Traditional hedges include I-bonds, TIPS, commodities, and — as today's data strongly suggests — gold.`
+  },
+  {
+    triggers: ["fed","federal reserve","powell","interest rate","rate hike","central bank"],
+    answer: `🏛️ **Jerome Powell is the most negatively-scored notable figure in today's dataset.**\n\n• 8 articles mention Powell, with an average VADER compound score of **−0.42**\n• FinBERT classifies 6 of these as "negative" with >80% confidence\n• Key headline: *"Fed signals further rate hikes amid persistent inflation"* (score: −0.72)\n\nThe Federal Reserve appears in 6 additional articles (avg −0.28), consistently in the context of:\n— Rate hike expectations\n— Balance sheet reduction\n— Recession risk from over-tightening\n\n💡 When the Fed is hawkish (raising rates), it typically hurts stocks (especially growth/tech) but can benefit bonds in the medium term. The market is currently pricing in at least 2 more hikes this cycle.`
+  },
+  {
+    triggers: ["buffett","warren","berkshire"],
+    answer: `🎩 **Warren Buffett is one of the few positive signals in today's dataset.**\n\n• 2 articles mention Buffett, with an average sentiment of **+0.38** (positive)\n• Top headline: *"Warren Buffett increases Berkshire cash reserves to record high"* (+0.38)\n\nInterestingly, Buffett increasing cash is actually a **bearish signal for the broader market** — it suggests he doesn't see compelling value in equities right now. This aligns with the tipping-point alert.\n\n💡 Buffett famously said *"Be fearful when others are greedy, and greedy when others are fearful."* Today's fear score is **0.62/1.00** — which historically has been closer to a buying opportunity than a selling one, for patient long-term investors.`
+  },
+  {
+    triggers: ["invest","buy","should i","stocks","equity","portfolio"],
+    answer: `⚖️ **Based on today's sentiment data, here's an objective picture — not advice:**\n\n**Bearish signals (🔴):**\n— Overall sentiment: −0.31 (Bearish)\n— Safe-Haven Pressure: 42% (above alert threshold)\n— Fear score: 0.62/1.00\n— 26 of 47 headlines are negative\n— Tipping Point Alert triggered\n\n**Potential upside signals (🟢):**\n— Warren Buffett increasing cash (patient positioning)\n— Gold inflows suggest capital is moving, not disappearing\n— Bond rally suggests some investors expect rate cuts ahead\n\n**What the data suggests:** The narrative is currently risk-off. Short-term volatility is elevated. However, historical data shows that peak fear often precedes medium-term recoveries.\n\n⚠️ *This is an AI analysis of news sentiment — not financial advice. Please consult a licensed financial adviser before making investment decisions.*`
+  },
+  {
+    triggers: ["recession","crash","bear market","economy"],
+    answer: `📉 **Recession language is present but not yet dominant in today's dataset.**\n\nKeyword frequency analysis:\n• "recession" — 9 articles (19%)\n• "market crash" — 4 articles (9%)\n• "bear market" — 6 articles (13%)\n• "sell-off" — 7 articles (15%)\n\nCombined, these "hard" fear keywords appear in **55%** of today's articles, which is what's driving the elevated Fear Score of 0.62.\n\nThe **Safe-Haven Flight** mood label is triggered when:\n✓ SHPI > 40% (currently 42%) **AND**\n✓ Overall sentiment < −0.20 (currently −0.31)\n\n💡 Recessions are declared retroactively by economists — by the time they're confirmed, markets have often already priced them in and begun recovering. Diversification and time in the market are your best tools.`
+  },
+];
+
+function getRAGAnswer(question) {
+  const q = question.toLowerCase();
+  for (const ra of RAG_ANSWERS) {
+    if (ra.triggers.some(t => q.includes(t))) return ra.answer;
+  }
+  return `🔍 **Here's what today's news data tells us:**\n\nCurrent market mood: **Safe-Haven Flight** (score: −0.31)\n\nTop themes in today's 47 articles:\n1. Federal Reserve rate hike expectations (most negative driver)\n2. Safe-haven flows into gold and bonds (SHPI: 42%)\n3. Tech sector earnings disappointments\n4. Geopolitical uncertainty\n\nIf you have a more specific question about a stock, sector, or economic indicator, try rephrasing — I'll do my best to pull relevant insights from today's indexed articles.\n\n⚠️ *All insights are based on today's news sentiment data — not financial advice.*`;
+}
+
+// ══════════════════════════════════════════════
+//  SEARCH RESULTS (pre-canned)
+// ══════════════════════════════════════════════
+const SEARCH_DB = {
+  "inflation rate hike": [
+    { title:"Fed signals further rate hikes amid persistent inflation", source:"Reuters", sentiment:"negative", score:-0.72, similarity:0.94, url:"#" },
+    { title:"IMF warns of slowing global growth as inflation stays elevated", source:"Reuters", sentiment:"negative", score:-0.54, similarity:0.91, url:"#" },
+    { title:"Central banks coordinate messaging on sustained rate path", source:"Bloomberg", sentiment:"negative", score:-0.38, similarity:0.87, url:"#" },
+    { title:"Dollar weakens ahead of crucial employment and inflation data", source:"Bloomberg", sentiment:"negative", score:-0.41, similarity:0.84, url:"#" },
+    { title:"Economists debate whether inflation has truly peaked this cycle", source:"Financial Times", sentiment:"neutral", score:-0.05, similarity:0.79, url:"#" },
+  ],
+  "gold safe haven": [
+    { title:"Gold hits 3-month high as investors scramble for safe assets", source:"Reuters", sentiment:"positive", score:0.45, similarity:0.97, url:"#" },
+    { title:"Central banks accelerating gold reserve purchases", source:"Bloomberg", sentiment:"negative", score:-0.44, similarity:0.93, url:"#" },
+    { title:"Commodity funds see largest gold inflows since March 2020", source:"CNBC", sentiment:"positive", score:0.19, similarity:0.91, url:"#" },
+    { title:"Safe-haven currencies surge on geopolitical tensions", source:"CNBC", sentiment:"negative", score:-0.52, similarity:0.85, url:"#" },
+    { title:"Analysts upgrade gold price target to $2,450 on macro backdrop", source:"MarketWatch", sentiment:"positive", score:0.31, similarity:0.82, url:"#" },
+  ],
+  "recession fear": [
+    { title:"Global markets tumble on renewed recession fears", source:"BBC Business", sentiment:"negative", score:-0.68, similarity:0.95, url:"#" },
+    { title:"Banking sector under pressure as credit default rates climb", source:"Financial Times", sentiment:"negative", score:-0.49, similarity:0.90, url:"#" },
+    { title:"Fear and Greed index falls to Extreme Fear territory", source:"CNN Business", sentiment:"negative", score:-0.67, similarity:0.88, url:"#" },
+    { title:"Hedge funds increase short positions on US equities", source:"Reuters", sentiment:"negative", score:-0.43, similarity:0.84, url:"#" },
+    { title:"Consumer confidence drops to 8-month low amid uncertainty", source:"MarketWatch", sentiment:"negative", score:-0.55, similarity:0.81, url:"#" },
+  ],
+  "tech stock earnings": [
+    { title:"Tech selloff deepens as Q1 earnings disappoint Wall Street", source:"CNBC", sentiment:"negative", score:-0.58, similarity:0.96, url:"#" },
+    { title:"Nasdaq down 2.4% as mega-cap tech misses revenue forecasts", source:"MarketWatch", sentiment:"negative", score:-0.61, similarity:0.92, url:"#" },
+    { title:"Analysts cut price targets on semiconductors after guidance miss", source:"Bloomberg", sentiment:"negative", score:-0.44, similarity:0.87, url:"#" },
+    { title:"AI hardware demand provides floor for chip stocks despite selloff", source:"Reuters", sentiment:"positive", score:0.22, similarity:0.79, url:"#" },
+    { title:"Software-as-a-service valuations compress as rates stay elevated", source:"Financial Times", sentiment:"negative", score:-0.36, similarity:0.75, url:"#" },
+  ],
+  "Federal Reserve policy": [
+    { title:"Fed signals further rate hikes amid persistent inflation", source:"Reuters", sentiment:"negative", score:-0.72, similarity:0.96, url:"#" },
+    { title:"Federal Reserve minutes reveal divided committee on pace of hikes", source:"Bloomberg", sentiment:"negative", score:-0.33, similarity:0.93, url:"#" },
+    { title:"Powell reaffirms commitment to 2% inflation target in speech", source:"Reuters", sentiment:"negative", score:-0.41, similarity:0.89, url:"#" },
+    { title:"Money markets price in 75bp of Fed hikes over next two meetings", source:"Financial Times", sentiment:"negative", score:-0.28, similarity:0.85, url:"#" },
+    { title:"Economists debate Fed's ability to achieve soft landing", source:"CNBC", sentiment:"neutral", score:-0.08, similarity:0.80, url:"#" },
+  ],
+};
+
+// ══════════════════════════════════════════════
+//  CHARTS
+// ══════════════════════════════════════════════
+
+let gaugeChart, trendChart, donutChart, weekChart;
+
+function initGauge() {
+  const score = DEMO.mood.overall_score;
+  const pct   = (score + 1) / 2;        // map [-1,1] → [0,1]
+  const angle = pct * Math.PI;           // 0 → π
+
+  const color = score > 0.15 ? '#4ade80' : score > -0.15 ? '#facc15' : score > -0.35 ? '#fb923c' : '#f87171';
+
+  gaugeChart = new Chart(document.getElementById('gaugeChart'), {
+    type: 'doughnut',
+    data: {
+      datasets: [{
+        data: [pct, 1 - pct],
+        backgroundColor: [color, 'rgba(255,255,255,0.06)'],
+        borderWidth: 0,
+        circumference: 180,
+        rotation: 270,
+      }]
+    },
+    options: { cutout:'72%', plugins:{legend:{display:false},tooltip:{enabled:false}}, animation:{duration:1500} }
+  });
+}
+
+function initTrend() {
+  const { base, shpi, labels } = DEMO.trend24h;
+  trendChart = new Chart(document.getElementById('trendChart'), {
+    type: 'line',
+    data: {
+      labels,
+      datasets: [
+        {
+          label: 'Sentiment', data: base,
+          borderColor: '#818cf8', backgroundColor: 'rgba(99,102,241,0.08)',
+          tension: 0.45, fill: true, pointRadius: 2, borderWidth: 2,
+        },
+        {
+          label: 'SHPI', data: shpi,
+          borderColor: '#f87171', backgroundColor: 'transparent',
+          tension: 0.45, fill: false, pointRadius: 0, borderWidth: 1.5,
+          borderDash: [4,3],
+        }
+      ]
+    },
+    options: {
+      responsive: true,
+      plugins: { legend:{display:false}, tooltip:{ mode:'index', intersect:false,
+        callbacks:{ label: ctx => `  ${ctx.dataset.label}: ${ctx.parsed.y > 0 ? '+' : ''}${ctx.parsed.y.toFixed(2)}` }
+      }},
+      scales: {
+        x: { grid:{color:'rgba(255,255,255,0.04)'}, ticks:{color:'#475569', maxTicksLimit:8, font:{size:10}} },
+        y: { grid:{color:'rgba(255,255,255,0.04)'}, ticks:{color:'#475569', font:{size:10}},
+             min: -0.5, max: 0.6 }
+      },
+      animation: { duration: 1200 }
+    }
+  });
+}
+
+function initDonut() {
+  donutChart = new Chart(document.getElementById('donutChart'), {
+    type: 'doughnut',
+    data: {
+      labels: ['Positive', 'Negative', 'Neutral'],
+      datasets: [{
+        data: [DEMO.mood.positive_count, DEMO.mood.negative_count, 47 - DEMO.mood.positive_count - DEMO.mood.negative_count],
+        backgroundColor: ['rgba(34,197,94,0.7)','rgba(239,68,68,0.7)','rgba(100,116,139,0.5)'],
+        borderColor: ['rgba(34,197,94,0.3)','rgba(239,68,68,0.3)','rgba(100,116,139,0.2)'],
+        borderWidth: 1,
+      }]
+    },
+    options: {
+      cutout: '65%',
+      plugins: {
+        legend: { display:false },
+        tooltip: { callbacks: { label: ctx => ` ${ctx.label}: ${ctx.parsed} articles` } }
+      },
+      animation: { duration:1200 }
+    }
+  });
+}
+
+function initWeekChart() {
+  const { sentiment, shpi, labels } = DEMO.week;
+  weekChart = new Chart(document.getElementById('weekChart'), {
+    type: 'bar',
+    data: {
+      labels,
+      datasets: [
+        {
+          label: 'Sentiment',
+          data: sentiment,
+          backgroundColor: sentiment.map(v => v >= 0 ? 'rgba(74,222,128,0.6)' : 'rgba(248,113,113,0.6)'),
+          borderColor:      sentiment.map(v => v >= 0 ? 'rgba(74,222,128,0.9)' : 'rgba(248,113,113,0.9)'),
+          borderWidth: 1,
+          borderRadius: 4,
+          yAxisID: 'y',
+        },
+        {
+          label: 'SHPI',
+          data: shpi,
+          type: 'line',
+          borderColor: '#f97316',
+          backgroundColor: 'transparent',
+          tension: 0.4,
+          pointRadius: 3,
+          borderWidth: 2,
+          yAxisID: 'y2',
+        }
+      ]
+    },
+    options: {
+      responsive: true,
+      plugins: { legend:{display:false},
+        tooltip:{ mode:'index', intersect:false,
+          callbacks:{ label: ctx => `  ${ctx.dataset.label}: ${ctx.parsed.y > 0?'+':''}${ctx.parsed.y.toFixed(2)}` }
+        }
+      },
+      scales: {
+        x: { grid:{color:'rgba(255,255,255,0.04)'}, ticks:{color:'#475569', font:{size:10}} },
+        y:  { grid:{color:'rgba(255,255,255,0.04)'}, ticks:{color:'#475569', font:{size:10}}, min:-0.5, max:0.5 },
+        y2: { position:'right', grid:{display:false}, ticks:{color:'#f97316', font:{size:10}}, min:0, max:1 }
+      },
+      animation: { duration:1000 }
+    }
+  });
+}
+
+// ══════════════════════════════════════════════
+//  POPULATE DOM
+// ══════════════════════════════════════════════
+
+function renderFigures() {
+  const el = document.getElementById('figuresList');
+  el.innerHTML = DEMO.figures.map(f => {
+    const sentColor = f.sentiment_label === 'positive' ? 'text-emerald-400' :
+                      f.sentiment_label === 'negative' ? 'text-red-400' : 'text-slate-400';
+    const pillClass = f.sentiment_label === 'positive' ? 'pill-pos' :
+                      f.sentiment_label === 'negative' ? 'pill-neg' : 'pill-neu';
+    const avgStr = (f.avg_sentiment > 0 ? '+' : '') + f.avg_sentiment.toFixed(2);
+    return `
+      <div class="fig-badge">
+        <div class="w-7 h-7 rounded-full bg-indigo-900/60 border border-indigo-500/30 flex items-center justify-center text-xs font-700 text-indigo-300 shrink-0">
+          ${f.name.split(' ').map(w=>w[0]).join('').slice(0,2)}
+        </div>
+        <div class="flex-1 min-w-0">
+          <p class="text-xs font-600 text-white truncate">${f.name}</p>
+          <p class="text-xs text-slate-500">${f.article_count} article${f.article_count>1?'s':''} · avg ${avgStr}</p>
+        </div>
+        <span class="pill ${pillClass} shrink-0">${f.sentiment_label}</span>
+      </div>`;
+  }).join('');
+}
+
+function renderSafeHavenList() {
+  const el = document.getElementById('safeHavenList');
+  el.innerHTML = DEMO.shHeadlines.slice(0,5).map(h => {
+    const scoreStr = (h.score > 0 ? '+' : '') + h.score.toFixed(2);
+    return `
+      <div class="headline-row">
+        <span class="text-amber-400 text-sm mt-0.5 shrink-0">🛡️</span>
+        <div class="flex-1 min-w-0">
+          <p class="text-xs text-slate-200 leading-snug">${h.title}</p>
+          <p class="text-xs text-slate-500 mt-0.5">${h.source}</p>
+        </div>
+        <span class="pill pill-neg shrink-0">${scoreStr}</span>
+      </div>`;
+  }).join('');
+}
+
+function renderHeadlines() {
+  document.getElementById('negHeadlines').innerHTML = DEMO.negHeadlines.map((h,i) =>
+    headlineRow(i+1, h, 'neg')).join('');
+  document.getElementById('posHeadlines').innerHTML = DEMO.posHeadlines.map((h,i) =>
+    headlineRow(i+1, h, 'pos')).join('');
+  document.getElementById('shHeadlines').innerHTML = DEMO.shHeadlines.map(h => `
+    <div class="headline-row">
+      <span class="text-amber-400 shrink-0">🛡️</span>
+      <div class="flex-1 min-w-0">
+        <p class="text-xs text-slate-200 leading-snug">${h.title}</p>
+        <p class="text-xs text-slate-500 mt-0.5">${h.source}</p>
+      </div>
+    </div>`).join('');
+}
+
+function headlineRow(i, h, type) {
+  const scoreStr = (h.score > 0 ? '+' : '') + h.score.toFixed(2);
+  const pillCls  = type === 'neg' ? 'pill-neg' : 'pill-pos';
+  return `
+    <div class="headline-row">
+      <span class="text-slate-500 text-xs w-4 shrink-0 mt-0.5">${i}</span>
+      <div class="flex-1 min-w-0">
+        <p class="text-xs text-slate-200 leading-snug">${h.title}</p>
+        <p class="text-xs text-slate-500 mt-0.5">${h.source}</p>
+      </div>
+      <span class="pill ${pillCls} shrink-0">${scoreStr}</span>
+    </div>`;
+}
+
+// ══════════════════════════════════════════════
+//  TABS
+// ══════════════════════════════════════════════
+function showTab(name, btn) {
+  document.querySelectorAll('.tab-section').forEach(s => s.classList.remove('active'));
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+  document.getElementById('tab-' + name).classList.add('active');
+  btn.classList.add('active');
+}
+
+// ══════════════════════════════════════════════
+//  RUN SIMULATION
+// ══════════════════════════════════════════════
+function simulateRun() {
+  const btn = document.getElementById('runBtn');
+  const icon = document.getElementById('runIcon');
+  const label = document.getElementById('runLabel');
+
+  btn.disabled = true;
+  btn.classList.add('opacity-70');
+  icon.textContent = '⏳';
+  label.textContent = 'Fetching…';
+
+  const steps = ['Fetching articles…','Running VADER…','Computing SHPI…','Saving to DB…','Done ✓'];
+  let i = 0;
+  const iv = setInterval(() => {
+    if (i < steps.length - 1) {
+      label.textContent = steps[i++];
+    } else {
+      clearInterval(iv);
+      icon.textContent = '✓';
+      label.textContent = 'Done ✓';
+      btn.classList.remove('opacity-70');
+
+      document.getElementById('lastUpdatedLabel').textContent = 'just now';
+
+      setTimeout(() => {
+        btn.disabled = false;
+        icon.textContent = '⚡';
+        label.textContent = 'Run Analysis';
+      }, 2000);
+    }
+  }, 800);
+}
+
+// ══════════════════════════════════════════════
+//  CHAT
+// ══════════════════════════════════════════════
+function sendChat() {
+  const input = document.getElementById('chatInput');
+  const q = input.value.trim();
+  if (!q) return;
+  input.value = '';
+
+  const box = document.getElementById('chatMessages');
+
+  // User bubble
+  const userDiv = document.createElement('div');
+  userDiv.style.display = 'flex';
+  userDiv.style.justifyContent = 'flex-end';
+  userDiv.innerHTML = `<div class="chat-bubble-user text-sm text-slate-100">${escHtml(q)}</div>`;
+  box.appendChild(userDiv);
+  box.scrollTop = box.scrollHeight;
+
+  // Typing indicator
+  const typingDiv = document.createElement('div');
+  typingDiv.innerHTML = `<div class="chat-bubble-ai"><div class="typing-dots"><span></span><span></span><span></span></div></div>`;
+  box.appendChild(typingDiv);
+  box.scrollTop = box.scrollHeight;
+
+  setTimeout(() => {
+    box.removeChild(typingDiv);
+    const answer = getRAGAnswer(q);
+    const aiDiv = document.createElement('div');
+    aiDiv.innerHTML = `<div class="chat-bubble-ai text-sm text-slate-200 leading-relaxed whitespace-pre-line">${markdownLite(answer)}</div>`;
+    box.appendChild(aiDiv);
+    box.scrollTop = box.scrollHeight;
+  }, 1200 + Math.random() * 600);
+}
+
+function askQuick(q) {
+  document.getElementById('chatInput').value = q;
+  sendChat();
+}
+
+// ══════════════════════════════════════════════
+//  SEARCH
+// ══════════════════════════════════════════════
+function doSearch() {
+  const q = document.getElementById('searchInput').value.trim().toLowerCase();
+  if (!q) return;
+  presetSearch(q);
+}
+
+function presetSearch(q) {
+  document.getElementById('searchInput').value = q;
+  const container = document.getElementById('searchResults');
+
+  // Show shimmer loading
+  container.innerHTML = Array(5).fill(`
+    <div class="search-card">
+      <div class="shimmer-block h-4 w-3/4 mb-2"></div>
+      <div class="shimmer-block h-3 w-1/2"></div>
+    </div>`).join('');
+
+  setTimeout(() => {
+    // Find best match
+    let results = null;
+    for (const key of Object.keys(SEARCH_DB)) {
+      if (key.split(' ').some(w => q.includes(w)) || q.includes(key)) {
+        results = SEARCH_DB[key];
+        break;
+      }
+    }
+    if (!results) {
+      // fallback: use first key
+      results = SEARCH_DB[Object.keys(SEARCH_DB)[0]];
+    }
+
+    container.innerHTML = results.map((r,i) => {
+      const scoreStr = (r.score > 0 ? '+' : '') + r.score.toFixed(2);
+      const pillCls  = r.sentiment === 'positive' ? 'pill-pos' : r.sentiment === 'negative' ? 'pill-neg' : 'pill-neu';
+      const simPct   = Math.round(r.similarity * 100);
+      return `
+        <div class="search-card">
+          <div class="flex items-start justify-between gap-3 mb-2">
+            <p class="text-sm text-white font-500 leading-snug">${r.title}</p>
+            <div class="flex flex-col items-end gap-1 shrink-0">
+              <span class="pill ${pillCls}">${scoreStr}</span>
+              <span class="text-xs text-slate-400">sim ${simPct}%</span>
+            </div>
+          </div>
+          <div class="flex items-center gap-3">
+            <span class="text-xs text-slate-400">📰 ${r.source}</span>
+            <div class="flex-1 metric-bar-track" style="max-width:120px">
+              <div class="metric-bar-fill bg-indigo-500" style="width:${simPct}%"></div>
+            </div>
+          </div>
+        </div>`;
+    }).join('');
+  }, 500 + Math.random() * 300);
+}
+
+// ══════════════════════════════════════════════
+//  HELPERS
+// ══════════════════════════════════════════════
+function escHtml(s) {
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+function markdownLite(s) {
+  return s
+    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+    .replace(/\*(.+?)\*/g, '<em>$1</em>')
+    .replace(/`(.+?)`/g, '<code class="text-indigo-300 bg-indigo-950/60 px-1 rounded text-xs">$1</code>')
+    .replace(/^(#{1,3})\s+(.+)$/gm, '<span class="font-700 text-white">$2</span>')
+    .replace(/^•\s/gm, '• ');
+}
+
+// ══════════════════════════════════════════════
+//  LIVE CLOCK
+// ══════════════════════════════════════════════
+function updateClock() {
+  const now = new Date();
+  document.getElementById('lastUpdatedLabel').textContent =
+    now.toUTCString().replace(' GMT','') + ' UTC';
+}
+
+// ══════════════════════════════════════════════
+//  INIT
+// ══════════════════════════════════════════════
+document.addEventListener('DOMContentLoaded', () => {
+  initGauge();
+  initTrend();
+  initDonut();
+  initWeekChart();
+  renderFigures();
+  renderSafeHavenList();
+  renderHeadlines();
+  updateClock();
+  setInterval(updateClock, 60000);
+
+  // Simulate live pulse every 30s (tiny random variation to feel alive)
+  setInterval(() => {
+    document.querySelector('.pulse-dot').style.background = '#facc15';
+    setTimeout(() => {
+      document.querySelector('.pulse-dot').style.background = '#4ade80';
+    }, 500);
+  }, 30000);
+});
+</script>
+
+</body>
+</html>
